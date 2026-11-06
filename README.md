@@ -8,10 +8,10 @@ No requiere cuentas, ChatGPT ni servicios externos. Los árboles se guardan en e
 
 ## Funciones
 
-- Árbol visual con ascendientes, descendientes y parejas.
+- Árbol visual con ascendientes, descendientes y parejas. Toca una persona para editarla.
 - Fichas con nombre, apellidos, género, nacimiento y defunción.
 - Edad actual y edad al fallecer calculadas automáticamente.
-- Recuerdos, búsqueda y copias de seguridad JSON.
+- Vista minimalista centrada en el árbol y copias de seguridad JSON.
 - Validación de fechas y relaciones para evitar ciclos de ascendencia.
 
 ## Desarrollo
@@ -35,3 +35,4 @@ La compilación estática se genera en `dist/`, con rutas relativas compatibles 
 ## Publicación
 
 La rama `main` contiene el código fuente y `gh-pages` la compilación pública. GitHub Pages sirve la raíz de `gh-pages`. Después de cada cambio, genera `dist/` y actualiza esa rama con su contenido.
+

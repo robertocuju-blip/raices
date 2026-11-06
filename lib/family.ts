@@ -39,10 +39,10 @@ export function layout(people:Person[]) {
   function level(id:string):number {if(levels.has(id))return levels.get(id)!;const p=map.get(id)!;const n=p.parents.length?1+Math.max(...p.parents.map(level)):0; levels.set(id,n);return n;}
   people.forEach(p=>level(p.id));
   const rows:Person[][]=[];people.forEach(p=>{const n=levels.get(p.id)!;(rows[n]??=[]).push(p);});
-  const width=Math.max(660,...rows.map(r=>r.length*196+64));
+  const width=Math.max(256,...rows.map(r=>r.length*196+64));
   const positions=new Map<string,{x:number,y:number}>();
   rows.forEach((r,i)=>{r.sort((a,b)=>{const px=(p:Person)=>p.parents.length?p.parents.reduce((v,id)=>v+(positions.get(id)?.x??0),0)/p.parents.length:people.indexOf(p)*196;return px(a)-px(b);});r.forEach((p,j)=>positions.set(p.id,{x:(width-r.length*196)/2+j*196+12,y:52+i*177}));});
-  return {positions,width,height:Math.max(440,rows.length*177+48),generations:rows.length};
+  return {positions,width,height:Math.max(220,rows.length*177+48),generations:rows.length};
 }
 export const demo:Family={title:'Familia García',people:[
   {id:'1',name:'Antonio',surname:'García López',gender:'Hombre',birth:'1932-04-16',deceased:true,death:'2016-08-21',place:'Granada, España',note:'Siempre tenía una historia que contar y tiempo para escuchar. Su jardín era el punto de encuentro de toda la familia.',parents:[],partners:['2']},
@@ -54,3 +54,4 @@ export const demo:Family={title:'Familia García',people:[
   {id:'7',name:'Elena',surname:'García Moreno',gender:'Mujer',birth:'1993-05-24',deceased:false,death:'',place:'Madrid, España',note:'Me gusta pensar que somos un poco de todas las personas que nos precedieron. Este árbol es mi manera de guardar sus historias.',parents:['5','6'],partners:[]},
   {id:'8',name:'Pablo',surname:'García Moreno',gender:'Hombre',birth:'1996-08-10',deceased:false,death:'',place:'Madrid, España',note:'Siempre encuentra una excusa para reunirnos.',parents:['5','6'],partners:[]}
 ]};
+
