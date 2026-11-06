@@ -78,27 +78,42 @@ export function layout(people:Person[]){
   const rowWidth=ids.reduce((n,id)=>n+g.members.get(id)!.length*COLUMN_STEP,0);let cursor=(width-rowWidth)/2;
   for(const id of ids){const members=g.members.get(id)!;const remaining=new Set(members.map(p=>p.id)),ordered:Person[]=[];while(remaining.size){let next=members.find(p=>remaining.has(p.id)&&ordered.at(-1)?.partners.includes(p.id));next??=members.find(p=>remaining.has(p.id));remaining.delete(next!.id);ordered.push(next!);}for(let j=0;j<ordered.length;j++)positions.set(ordered[j].id,{x:cursor+j*COLUMN_STEP+(COLUMN_STEP-NODE_WIDTH)/2,y:48+level*GENERATION_STEP});centers.set(id,cursor+members.length*COLUMN_STEP/2);cursor+=members.length*COLUMN_STEP;}
  }
- const connections:TreeConnection[]=[];const usedCouples=new Set<string>();
+
+ const connections:TreeConnection[]=[],junctions:{id:string;x:number;y:number}[]=[];
+ const unions=new Map<string,{x:number;y:number}>();
+ const pairKey=(a:string,b:string)=>[a,b].sort().join('|');
+ function connectPair(aId:string,bId:string,kind:'family'|'couple'){
+  const key=pairKey(aId,bId);const existing=unions.get(key);if(existing)return existing;
+  let a=positions.get(aId)!,b=positions.get(bId)!;if(a.x>b.x)[a,b]=[b,a];
+  const left=a.x+NODE_WIDTH-.5,right=b.x+.5,y=a.y+NODE_HEIGHT/2;
+  // Anchor the descent in an actual gap, including families with several partners.
+  const row=[...positions.values()].filter(p=>p.y===a.y&&p.x>=a.x&&p.x<=b.x).sort((x,z)=>x.x-z.x);
+  const target=(left+right)/2;const gaps=row.slice(0,-1).map((p,i)=>(p.x+NODE_WIDTH+row[i+1].x)/2);gaps.sort((x,z)=>Math.abs(x-target)-Math.abs(z-target));
+  const anchor={x:gaps[0]??target,y};
+  connections.push({id:(kind==='couple'?'couple-':'coparents-')+key,kind,d:'M '+left+' '+y+' H '+right});
+  junctions.push({id:'union-'+key,...anchor});unions.set(key,anchor);return anchor;
+ }
+ // Couples meet side-to-side, at the vertical centre of their cards.
+ for(const p of people)for(const id of p.partners)connectPair(p.id,id,'couple');
  const brace=(left:number,right:number,y:number,direction:number)=>{const mid=(left+right)/2;return 'M '+left+' '+y+' C '+left+' '+(y+22*direction)+' '+(mid-16)+' '+(y+5*direction)+' '+mid+' '+(y+30*direction)+' C '+(mid+16)+' '+(y+5*direction)+' '+right+' '+(y+22*direction)+' '+right+' '+y;};
  const childFamilies=new Map<string,{parents:string[];children:Person[]}>();
  for(const p of people){if(!p.parents.length)continue;const parents=[...p.parents].sort();const y=positions.get(p.id)!.y;const key=parents.join('|')+'@'+y;const family=childFamilies.get(key)??{parents,children:[]};family.children.push(p);childFamilies.set(key,family);}
  for(const [key,family] of childFamilies){
-  const ps=family.parents.map(id=>positions.get(id)!),kids=family.children.map(p=>positions.get(p.id)!).sort((a,b)=>a.x-b.x);
-  const left=Math.min(...ps.map(p=>p.x+NODE_WIDTH/2)),right=Math.max(...ps.map(p=>p.x+NODE_WIDTH/2)),parentY=Math.max(...ps.map(p=>p.y))+NODE_HEIGHT;
-  let startX=(left+right)/2,startY=parentY;
-  if(ps.length>1){connections.push({id:'parents-'+key,kind:'family',d:brace(left,right,parentY+7,1)});startY=parentY+37;if(family.parents.length===2)usedCouples.add(family.parents.join('|'));}
-  const childY=kids[0].y,leftKid=kids[0].x+NODE_WIDTH/2,rightKid=kids.at(-1)!.x+NODE_WIDTH/2,endX=(leftKid+rightKid)/2,endY=kids.length>1?childY-30:childY;
-  const midY=(startY+endY)/2;connections.push({id:'stem-'+key,kind:'family',d:'M '+startX+' '+startY+' C '+(startX+5)+' '+midY+' '+(endX-5)+' '+midY+' '+endX+' '+endY});
+  const parents=[...family.parents].sort((a,b)=>positions.get(a)!.x-positions.get(b)!.x),kids=family.children.map(p=>positions.get(p.id)!).sort((a,b)=>a.x-b.x);
+  const childY=kids[0].y+.5,leftKid=kids[0].x+NODE_WIDTH/2,rightKid=kids.at(-1)!.x+NODE_WIDTH/2,endX=(leftKid+rightKid)/2,endY=kids.length>1?childY-30:childY;
+  let startX:number,startY:number;
+  if(parents.length===1){const p=positions.get(parents[0])!;startX=p.x+NODE_WIDTH/2;startY=p.y+NODE_HEIGHT-.5;}
+  else{const anchors=parents.slice(0,-1).map((id,i)=>connectPair(id,parents[i+1],'family'));anchors.sort((a,b)=>Math.abs(a.x-endX)-Math.abs(b.x-endX));startX=anchors[0].x;startY=anchors[0].y;}
+  const midY=(startY+endY)/2;connections.push({id:'stem-'+key,kind:'family',d:'M '+startX+' '+startY+' C '+startX+' '+midY+' '+endX+' '+midY+' '+endX+' '+endY});
   if(kids.length>1){connections.push({id:'children-'+key,kind:'family',d:brace(leftKid,rightKid,childY,-1)});
    for(const kid of kids.slice(1,-1)){
     const x=kid.x+NODE_WIDTH/2,mid=(leftKid+rightKid)/2;const control=x<=mid?[leftKid,leftKid,mid-16,mid]:[mid,mid+16,rightKid,rightKid];const ys=x<=mid?[childY,childY-22,childY-5,childY-30]:[childY-30,childY-5,childY-22,childY];
-    const cubic=(a:number[],t:number)=>a[0]*(1-t)**3+3*a[1]*(1-t)**2*t+3*a[2]*(1-t)*t*t+a[3]*t**3;let low=0,high=1;for(let i=0;i<24;i++){const t=(low+high)/2;if(cubic(control,t)<x)low=t;else high=t;}const y=cubic(ys,(low+high)/2);connections.push({id:'child-'+key+'-'+x,kind:'family',d:'M '+x+' '+y+' C '+(x-3)+' '+(y+10)+' '+(x+3)+' '+(childY-10)+' '+x+' '+childY});
+    const cubic=(a:number[],t:number)=>a[0]*(1-t)**3+3*a[1]*(1-t)**2*t+3*a[2]*(1-t)*t*t+a[3]*t**3;let low=0,high=1;for(let i=0;i<24;i++){const t=(low+high)/2;if(cubic(control,t)<x)low=t;else high=t;}const y=cubic(ys,(low+high)/2);connections.push({id:'child-'+key+'-'+x,kind:'family',d:'M '+x+' '+y+' C '+x+' '+(y+10)+' '+x+' '+(childY-10)+' '+x+' '+childY});
    }
   }
  }
- for(const p of people)for(const id of p.partners){const key=[p.id,id].sort().join('|');if(usedCouples.has(key))continue;usedCouples.add(key);const a=positions.get(p.id)!,b=positions.get(id)!;connections.push({id:'couple-'+key,kind:'couple',d:brace(Math.min(a.x,b.x)+NODE_WIDTH/2,Math.max(a.x,b.x)+NODE_WIDTH/2,Math.max(a.y,b.y)+NODE_HEIGHT+7,1)});}
  const generations=people.length?Math.max(...g.levels.values())+1:0;
- return {positions,connections,width,height:Math.max(220,generations*GENERATION_STEP+48),generations,hierarchyError:g.hierarchyError};
+ return {positions,connections,junctions,width,height:Math.max(220,generations*GENERATION_STEP+48),generations,hierarchyError:g.hierarchyError};
 }
 export const demo:Family={title:'Familia García',people:[
   {id:'1',name:'Antonio',surname:'García López',gender:'Hombre',birth:'1932-04-16',deceased:true,death:'2016-08-21',place:'Granada, España',note:'Siempre tenía una historia que contar y tiempo para escuchar. Su jardín era el punto de encuentro de toda la familia.',parents:[],partners:['2']},
