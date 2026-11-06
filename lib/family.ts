@@ -69,16 +69,44 @@ export function searchRelatives(people:Person[],query:string,exclude:string[]=[]
 }
 export type TreeConnection={id:string;kind:'family'|'couple';d:string};
 export function layout(people:Person[]){
- const g=generationGroups(people);const rowGroups=new Map<number,string[]>();for(const id of g.members.keys()){const level=g.levels.get(id)!;rowGroups.set(level,[...(rowGroups.get(level)??[]),id]);}
- const width=Math.max(256,...[...rowGroups.values()].map(ids=>ids.reduce((n,id)=>n+g.members.get(id)!.length*COLUMN_STEP,0)+64));
- const positions=new Map<string,{x:number;y:number}>(),centers=new Map<string,number>();
- const orderedRows=[...rowGroups].sort((a,b)=>a[0]-b[0]);
- for(const [level,ids] of orderedRows){
-  const order=(id:string)=>{const ps=[...g.parents.get(id)!].filter(p=>centers.has(p));return ps.length?ps.reduce((sum,p)=>sum+centers.get(p)!,0)/ps.length:Infinity;};ids.sort((a,b)=>order(a)-order(b));
-  const rowWidth=ids.reduce((n,id)=>n+g.members.get(id)!.length*COLUMN_STEP,0);let cursor=(width-rowWidth)/2;
-  for(const id of ids){const members=g.members.get(id)!;const remaining=new Set(members.map(p=>p.id)),ordered:Person[]=[];while(remaining.size){let next=members.find(p=>remaining.has(p.id)&&ordered.at(-1)?.partners.includes(p.id));next??=members.find(p=>remaining.has(p.id));remaining.delete(next!.id);ordered.push(next!);}for(let j=0;j<ordered.length;j++)positions.set(ordered[j].id,{x:cursor+j*COLUMN_STEP+(COLUMN_STEP-NODE_WIDTH)/2,y:48+level*GENERATION_STEP});centers.set(id,cursor+members.length*COLUMN_STEP/2);cursor+=members.length*COLUMN_STEP;}
- }
 
+ const g=generationGroups(people),byId=new Map(people.map(p=>[p.id,p]));
+ const rowGroups=new Map<number,string[]>();for(const id of g.members.keys()){const level=g.levels.get(id)!;rowGroups.set(level,[...(rowGroups.get(level)??[]),id]);}
+ // Reserve each family's descendant space before placing individual cards.
+ const unitWidths=new Map<string,number>();
+ function unitWidth(id:string,seen=new Set<string>()):number{if(unitWidths.has(id))return unitWidths.get(id)!;if(seen.has(id))return g.members.get(id)!.length*COLUMN_STEP;const visiting=new Set(seen).add(id);const descendants=[...g.children.get(id)!].reduce((n,child)=>n+unitWidth(child,visiting)/Math.max(1,g.parents.get(child)!.size),0);const result=Math.max(g.members.get(id)!.length*COLUMN_STEP,descendants);unitWidths.set(id,result);return result;}
+ for(const id of g.members.keys())unitWidth(id);
+ const spans=new Map(people.map(p=>[p.id,unitWidths.get(g.groupOf(p.id))!/g.members.get(g.groupOf(p.id))!.length]));
+ const xs=new Map<string,number>(),rows:{level:number;ids:string[];offsets:number[];correction:number[]}[]=[];
+ const groupCenters=new Map<string,number>();
+ for(const [level,groups] of [...rowGroups].sort((a,b)=>a[0]-b[0])){
+  const preference=(id:string)=>{const ps=[...g.parents.get(id)!].filter(p=>groupCenters.has(p));return ps.length?ps.reduce((n,p)=>n+groupCenters.get(p)!,0)/ps.length:Infinity;};groups.sort((a,b)=>preference(a)-preference(b));
+  const ids:string[]=[];for(const id of groups){const members=[...g.members.get(id)!];members.sort((a,b)=>{const average=(p:Person)=>p.parents.length?p.parents.reduce((n,parent)=>n+(xs.get(parent)??0),0)/p.parents.length:Infinity;return average(a)-average(b);});const neighbours=new Map(members.map(p=>[p.id,new Set(p.partners.filter(id=>members.some(q=>q.id===id)))]));for(const p of people){const same=p.parents.filter(id=>neighbours.has(id));for(const a of same)for(const b of same)if(a!==b)neighbours.get(a)!.add(b);}const available=new Set(members.map(p=>p.id)),ordered:string[]=[];while(available.size){const previous=ordered.at(-1);const next=members.find(p=>available.has(p.id)&&previous&&neighbours.get(previous)!.has(p.id))??members.find(p=>available.has(p.id)&&neighbours.get(p.id)!.size<=1)??members.find(p=>available.has(p.id))!;available.delete(next.id);ordered.push(next.id);}ids.push(...ordered);}
+  let cursor=0;const offsets:number[]=[];for(const group of groups){const members=ids.filter(id=>g.groupOf(id)===group);const natural=members.length*COLUMN_STEP;const reserve=unitWidths.get(group)!;members.forEach((id,i)=>xs.set(id,cursor+(reserve-natural)/2+i*COLUMN_STEP+COLUMN_STEP/2));cursor+=reserve;}for(let i=0;i<ids.length;i++){let distance=COLUMN_STEP;if(i&&g.groupOf(ids[i])!==g.groupOf(ids[i-1])){const a=g.groupOf(ids[i-1]),b=g.groupOf(ids[i]);distance+=(unitWidths.get(a)!-g.members.get(a)!.length*COLUMN_STEP+unitWidths.get(b)!-g.members.get(b)!.length*COLUMN_STEP)/2;}offsets.push(i?offsets[i-1]+distance:0);}
+  const shift=cursor/2;ids.forEach(id=>xs.set(id,xs.get(id)!-shift));for(const id of groups){const members=g.members.get(id)!;groupCenters.set(id,members.reduce((n,p)=>n+xs.get(p.id)!,0)/members.length);}
+  rows.push({level,ids,offsets,correction:ids.map(()=>0)});
+ }
+ const families=new Map<string,{parents:string[];children:string[]}>();
+ for(const p of people){if(!p.parents.length)continue;const parents=[...p.parents].sort();const key=parents.join('|')+'@'+g.levels.get(g.groupOf(p.id));const f=families.get(key)??{parents,children:[]};f.children.push(p.id);families.set(key,f);}
+ // Isotonic projection keeps family blocks ordered and reserves their full width.
+ function projectRow(values:number[],offsets:number[]){const blocks:{start:number;end:number;sum:number;count:number}[]=[];for(let i=0;i<values.length;i++){blocks.push({start:i,end:i,sum:values[i]-offsets[i],count:1});while(blocks.length>1){const a=blocks.at(-2)!,b=blocks.at(-1)!;if(a.sum/a.count<=b.sum/b.count)break;blocks.splice(-2,2,{start:a.start,end:b.end,sum:a.sum+b.sum,count:a.count+b.count});}}const result:number[]=[];for(const b of blocks)for(let i=b.start;i<=b.end;i++)result[i]=b.sum/b.count+offsets[i];return result;}
+ // First put each sibling block directly below the centre of its parents.
+ for(const row of rows){
+  for(const f of families.values()){if(g.levels.get(g.groupOf(f.children[0]))!==row.level)continue;const children=[...f.children].sort((a,b)=>row.ids.indexOf(a)-row.ids.indexOf(b));let cursor=0;const local=children.map(id=>{const span=spans.get(id)!;const value=cursor+span/2;cursor+=span;return value;});const centre=(local[0]+local.at(-1)!)/2;const parents=f.parents.map(id=>xs.get(id)!);const anchor=(Math.min(...parents)+Math.max(...parents))/2;children.forEach((id,i)=>xs.set(id,anchor+local[i]-centre));}
+  for(const id of row.ids){const p=byId.get(id)!;if(p.parents.length)continue;const partner=p.partners.map(id=>byId.get(id)!).find(p=>p.parents.length&&row.ids.includes(p.id));if(partner){const index=row.ids.indexOf(id),other=row.ids.indexOf(partner.id);xs.set(id,xs.get(partner.id)!+(index-other)*COLUMN_STEP);}}
+  const projected=projectRow(row.ids.map(id=>xs.get(id)!),row.offsets);row.ids.forEach((id,i)=>xs.set(id,projected[i]));
+ }
+ const constraints=[...families.values()].map(f=>{const parents=[...f.parents].sort((a,b)=>xs.get(a)!-xs.get(b)!),children=[...f.children].sort((a,b)=>xs.get(a)!-xs.get(b)!);const coefficients=new Map<string,number>();for(const [id,w] of [[parents[0],.5],[parents.at(-1)!,.5],[children[0],-.5],[children.at(-1)!,-.5]] as [string,number][])coefficients.set(id,(coefficients.get(id)??0)+w);const entries=[...coefficients].filter(([,w])=>w!==0);return {entries,norm:entries.reduce((n,[,w])=>n+w*w,0),correction:entries.map(()=>0)};});
+ // Dykstra projections centre all families together, rather than centring rows independently.
+ let centeringError=0;
+ if(!g.hierarchyError)for(let iteration=0;iteration<4000;iteration++){
+  for(const constraint of constraints){if(!constraint.norm)continue;const input=constraint.entries.map(([id],i)=>xs.get(id)!+constraint.correction[i]);const error=constraint.entries.reduce((sum,[,w],i)=>sum+w*input[i],0)/constraint.norm;constraint.entries.forEach(([id,w],i)=>{const value=input[i]-w*error;constraint.correction[i]=input[i]-value;xs.set(id,value);});}
+  for(const row of rows){const input=row.ids.map((id,i)=>xs.get(id)!+row.correction[i]);const output=projectRow(input,row.offsets);row.ids.forEach((id,i)=>{row.correction[i]=input[i]-output[i];xs.set(id,output[i]);});}
+  centeringError=constraints.reduce((maximum,c)=>Math.max(maximum,Math.abs(c.entries.reduce((sum,[id,w])=>sum+xs.get(id)!*w,0))),0);if(centeringError<.03)break;
+ }
+ const minX=people.length?Math.min(...people.map(p=>xs.get(p.id)!-NODE_WIDTH/2)):0;
+ const positions=new Map<string,{x:number;y:number}>();for(const p of people)positions.set(p.id,{x:xs.get(p.id)!-minX+32-NODE_WIDTH/2,y:48+g.levels.get(g.groupOf(p.id))!*GENERATION_STEP});
+ const width=Math.max(256,...[...positions.values()].map(p=>p.x+NODE_WIDTH+32));
  const connections:TreeConnection[]=[],junctions:{id:string;x:number;y:number}[]=[];
  const unions=new Map<string,{x:number;y:number}>();
  const pairKey=(a:string,b:string)=>[a,b].sort().join('|');
@@ -113,7 +141,7 @@ export function layout(people:Person[]){
   }
  }
  const generations=people.length?Math.max(...g.levels.values())+1:0;
- return {positions,connections,junctions,width,height:Math.max(220,generations*GENERATION_STEP+48),generations,hierarchyError:g.hierarchyError};
+ return {positions,connections,junctions,centeringError,width,height:Math.max(220,generations*GENERATION_STEP+48),generations,hierarchyError:g.hierarchyError};
 }
 export const demo:Family={title:'Familia García',people:[
   {id:'1',name:'Antonio',surname:'García López',gender:'Hombre',birth:'1932-04-16',deceased:true,death:'2016-08-21',place:'Granada, España',note:'Siempre tenía una historia que contar y tiempo para escuchar. Su jardín era el punto de encuentro de toda la familia.',parents:[],partners:['2']},

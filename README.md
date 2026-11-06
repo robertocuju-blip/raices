@@ -8,10 +8,10 @@ No requiere cuentas, ChatGPT ni servicios externos. Los árboles se guardan en e
 
 ## Funciones
 
-- Árbol de arriba abajo, con parejas unidas por líneas rectas y ramas curvas conectadas a las cajas. Toca una persona para editarla.
+- Árbol por bloques familiares, con hijos centrados bajo sus padres, parejas unidas por líneas rectas y ramas curvas conectadas a las cajas.
 - Fichas de mujer u hombre en rosa o azul, con fechas opcionales de nacimiento y defunción.
 - Edad actual y edad al fallecer calculadas automáticamente.
-- Vista minimalista, buscador de vínculos familiares y copias de seguridad JSON.
+- Vista minimalista con mayor contraste, zoom por pellizco, arrastre, buscador de vínculos y copias de seguridad JSON.
 - Validación de fechas y relaciones para evitar ciclos de ascendencia.
 
 ## Desarrollo
@@ -28,6 +28,9 @@ node --experimental-strip-types family.test.mjs
 node --experimental-strip-types storage.test.mjs
 node --experimental-strip-types hierarchy.test.mjs
 node --experimental-strip-types connections.test.mjs
+node --experimental-strip-types centered-layout.test.mjs
+node --experimental-strip-types gestures.test.mjs
+node contrast.test.mjs
 npx tsc --noEmit
 npm run build
 ```
@@ -41,4 +44,5 @@ La rama `main` contiene el código fuente y `gh-pages` la compilación pública.
 
 
 La unión de parejas y descendientes toma como referencia visual [Family Gem](https://www.familygem.app/).
+
 
