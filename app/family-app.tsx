@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {Sprout,GitFork,Users,BookOpen,Plus,Search,Download,Upload,ChevronRight,ChevronDown,ArrowUpRight,ArrowLeft,Check,Cloud,Heart,MapPin,CalendarDays,MoreHorizontal,Minus,Maximize, X,Pencil,Trash2,ShieldCheck,Leaf,LoaderCircle} from 'lucide-react';
+import {Sprout,GitFork,Users,BookOpen,Plus,Search,Download,Upload,ChevronRight,ChevronDown,ArrowUpRight,ArrowLeft,Check,HardDrive,Heart,MapPin,CalendarDays,MoreHorizontal,Minus,Maximize, X,Pencil,Trash2,ShieldCheck,Leaf,LoaderCircle} from 'lucide-react';
+import {loadFamily,saveFamily,STORAGE_KEY} from '../lib/storage';
 import {age,demo,initials,layout,todayISO,validateFamily,type Family,type Person} from '../lib/family';
 const blank=():Person=>({id:crypto.randomUUID(),name:'',surname:'',gender:'Sin especificar',birth:'',death:'',deceased:false,place:'',note:'',parents:[],partners:[]});
 const full=(p:Person)=>p.name+' '+p.surname;
@@ -12,15 +13,16 @@ export default function FamilyApp(){
  const importer=useRef<HTMLInputElement>(null), viewport=useRef<HTMLDivElement>(null),focusBefore=useRef<HTMLElement|null>(null);
  const graph=useMemo(()=>layout(family.people),[family.people]);
  const person=family.people.find(p=>p.id===selected),matches=family.people.filter(p=>full(p).toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es')));
- useEffect(()=>{let alive=true;fetch('/api/tree').then(async r=>{const data=await r.json() as {tree:Family|null;revision:number;error?:string};if(!r.ok)throw new Error(data.error||'No se pudo cargar el árbol.');if(alive){if(data.tree){validateFamily(data.tree);setFamily(data.tree);setSelected(data.tree.people[0]?.id??null);setIsDemo(false);}setRevision(data.revision);setSaveStatus(data.tree?'Todo guardado':'Vista de ejemplo');setReady(true);}}).catch(e=>{if(alive){setError(e.message);setSaveStatus('Sin conexión');}});return()=>{alive=false;};},[]);
+ useEffect(()=>{try{const saved=loadFamily(localStorage);if(saved){setFamily(saved.tree);setSelected(saved.tree.people[0]?.id??null);setIsDemo(false);setRevision(saved.revision);}setSaveStatus(saved?'Guardado en este navegador':'Vista de ejemplo');setReady(true);}catch(e){setError(e instanceof Error?e.message:'Tu navegador no permite guardar datos. Habilita el almacenamiento para utilizar Raíces.');setSaveStatus('Almacenamiento no disponible');}},[]);
  useEffect(()=>{const fn=(e:BeforeUnloadEvent)=>{if(saveStatus==='Sin guardar'){e.preventDefault();}};window.addEventListener('beforeunload',fn);return()=>window.removeEventListener('beforeunload',fn);},[saveStatus]);
  useEffect(()=>{const el=viewport.current;if(!el)return;const fit=()=>setZoom(Math.min(1,(el.clientWidth-24)/graph.width));const observer=new ResizeObserver(fit);observer.observe(el);fit();return()=>observer.disconnect();},[graph.width,view]);
  const dialogOpen=!!modal||!!confirm||rename;
  useEffect(()=>{if(!dialogOpen)return;focusBefore.current=document.activeElement as HTMLElement;const el=document.querySelector<HTMLElement>('[role="dialog"]');el?.querySelector<HTMLElement>('input,button')?.focus();const handler=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!busy){setModal(null);setConfirm(null);setRename(false);}if(e.key==='Tab'){const items=Array.from(el?.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href]')??[]).filter(e=>!e.hasAttribute('disabled')&&e.offsetParent!==null);const first=items[0],last=items[items.length-1];if(e.shiftKey&&document.activeElement===first){last?.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first?.focus();e.preventDefault();}}};document.addEventListener('keydown',handler);return()=>{document.removeEventListener('keydown',handler);focusBefore.current?.focus();};},[dialogOpen,busy]);
+ useEffect(()=>{if(!ready)return;const sync=()=>{if(dialogOpen)return;try{const saved=loadFamily(localStorage);if(saved){setFamily(saved.tree);setRevision(saved.revision);setIsDemo(false);setSelected(id=>saved.tree.people.some(p=>p.id===id)?id:(saved.tree.people[0]?.id??null));setSaveStatus('Guardado en este navegador');}}catch(e){setError(e instanceof Error?e.message:'No se pudo leer la copia local.');}};const onStorage=(e:StorageEvent)=>{if(e.key===STORAGE_KEY)sync();};sync();window.addEventListener('storage',onStorage);return()=>window.removeEventListener('storage',onStorage);},[dialogOpen,ready]);
  async function persist(next:Family){
-  validateFamily(next);if(!ready)throw new Error('Espera a que termine de cargar tu árbol.');
+  validateFamily(next);if(!ready)throw new Error('El almacenamiento de este navegador no está disponible.');
   setBusy(true);setSaveStatus('Guardando…');setError('');
-  try{const r=await fetch('/api/tree',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tree:next,revision})});const data=await r.json() as {tree:Family|null;revision:number;error?:string};if(!r.ok)throw new Error(data.error||'No se pudo guardar.');setFamily(next);setRevision(data.revision);setIsDemo(false);setSaveStatus('Todo guardado');}
+  try{const save=()=>saveFamily(localStorage,next,revision);const saved=navigator.locks?await navigator.locks.request('raices-save',save):save();setFamily(saved.tree);setRevision(saved.revision);setIsDemo(false);setSaveStatus('Guardado en este navegador');}
   catch(e){setSaveStatus('Sin guardar');throw e;}finally{setBusy(false);}
  }
  function attempt(next:Family,after?:()=>void){persist(next).then(()=>after?.()).catch(e=>setError(e.message));}
@@ -37,7 +39,7 @@ export default function FamilyApp(){
  const begin=()=>{attempt({title:'Mi familia',people:[]},()=>{setConfirm(null);setSelected(null);setView('tree');add();});};
  return <div className="app-shell">
   <aside className="sidebar">
-   <a className="brand" href="/" aria-label="Raíces, inicio"><span className="brand-mark"><Sprout size={28} strokeWidth={1.5}/></span><span>raíces<span className="brand-dot">.</span></span></a>
+   <a className="brand" href="./" aria-label="Raíces, inicio"><span className="brand-mark"><Sprout size={28} strokeWidth={1.5}/></span><span>raíces<span className="brand-dot">.</span></span></a>
    <div className="workspace-label">MI ESPACIO FAMILIAR</div>
    <button className="family-switch" onClick={()=>{setTitle(family.title);setRename(true);}} disabled={busy||!ready}><span className="family-symbol"><GitFork size={17}/></span><span>{isDemo?'Mi familia':family.title}<small>Un lugar para recordar</small></span><ChevronDown size={14}/></button>
    <nav aria-label="Navegación principal">
@@ -49,17 +51,17 @@ export default function FamilyApp(){
    <button className="nav-item" onClick={download}><Download size={17}/>Descargar una copia</button>
    <button className="nav-item" onClick={()=>importer.current?.click()} disabled={busy||!ready}><Upload size={17}/>Importar árbol</button>
    <input hidden ref={importer} type="file" accept=".json,application/json" onChange={e=>importFile(e.target.files?.[0])}/>
-   <div className="sidebar-bottom"><div className="memory-note"><Sprout size={25} strokeWidth={1.2}/><p>Las historias nos unen.<br/><em>Las raíces nos sostienen.</em></p></div><div className="private"><ShieldCheck size={15}/><span>Tu espacio es privado</span></div></div>
+   <div className="sidebar-bottom"><div className="memory-note"><Sprout size={25} strokeWidth={1.2}/><p>Las historias nos unen.<br/><em>Las raíces nos sostienen.</em></p></div><div className="private"><ShieldCheck size={15}/><span>Datos en este dispositivo</span></div></div>
   </aside>
   <div className="main-shell">
-   <header className="topbar"><div className="breadcrumb">Mi espacio <ChevronRight size={13}/><span>{view==='tree'?'Árbol genealógico':view==='people'?'Personas':'Recuerdos'}</span></div><div className="top-right"><span className={'save-state '+(saveStatus==='Sin guardar'?'warning':'')}><Cloud size={15}/>{saveStatus}</span><span className="account-avatar"><Leaf size={17}/></span></div></header>
+   <header className="topbar"><div className="breadcrumb">Mi espacio <ChevronRight size={13}/><span>{view==='tree'?'Árbol genealógico':view==='people'?'Personas':'Recuerdos'}</span></div><div className="top-right"><span className={'save-state '+(saveStatus==='Sin guardar'?'warning':'')}><HardDrive size={15}/>{saveStatus}</span><span className="account-avatar"><Leaf size={17}/></span></div></header>
    <main>
     <div className="page-heading"><div><div className="eyebrow">CADA VIDA, UNA HISTORIA</div><h1>{view==='tree'?'Tu historia empieza aquí.':view==='people'?'Las personas que nos unen.':'Lo que siempre queda.'}</h1><p>{view==='tree'?'Conecta generaciones. Conserva lo que os hace familia.':view==='people'?'Un lugar para cada nombre, cada vida y cada recuerdo.':'Pequeñas historias que merecen pasar de generación en generación.'}</p></div><button className="primary" onClick={()=>isDemo?setConfirm('start'):add()} disabled={busy||!ready}><Plus size={17}/>{isDemo?'Crear mi árbol':'Añadir persona'}</button></div>
-    {error&&<div className="error-banner" role="alert"><span>{error}</span>{error.includes('sesión')&&<a href="/signin-with-chatgpt?return_to=/" target="_top">Iniciar sesión</a>}<button className="icon-button" aria-label="Cerrar aviso" onClick={()=>setError('')}><X size={15}/></button></div>}
+    {error&&<div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" aria-label="Cerrar aviso" onClick={()=>setError('')}><X size={15}/></button></div>}
     <section className="tree-section" aria-label="Árbol familiar">
      <div className="section-toolbar"><div className="tree-title"><span className="tree-symbol"><GitFork size={18}/></span><div><h2>{family.title}</h2><span>{family.people.length} personas <span className="dot-sep">·</span> {graph.generations} generaciones</span></div>{isDemo&&<span className="tag">Ejemplo</span>}</div><label className="search"><Search size={16}/><input aria-label="Buscar familiar" placeholder="Buscar familiar…" value={search} onChange={e=>setSearch(e.target.value)}/>{search&&<button aria-label="Borrar búsqueda" onClick={()=>setSearch('')}><X size={13}/></button>}</label></div>
      {isDemo&&<div className="demo-banner"><span><span className="tiny-leaf"><Leaf size={13}/></span>Una familia de ejemplo para que explores las posibilidades.</span><button onClick={()=>setConfirm('start')} disabled={busy||!ready}>Empieza tu historia <ArrowUpRight size={14}/></button></div>}
-     <div className={'content-area '+(!person?'no-detail':'')}>
+     <div className="storage-notice"><ShieldCheck size={14}/><span>Sin cuentas. Tu árbol se guarda en este navegador. Descarga una copia para conservarlo o usarlo en otro dispositivo.</span></div><div className={'content-area '+(!person?'no-detail':'')}>
       <div className="canvas-column">
        {view==='tree'?<>
         <div className="tree-canvas" ref={viewport}>
