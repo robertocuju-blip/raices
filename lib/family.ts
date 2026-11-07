@@ -9,7 +9,12 @@ export const isYear=(value:string)=>/^\d{4}$/.test(value);
 export const dateStart=(value:string)=>isYear(value)?value+'-01-01':value;
 const dateEnd=(value:string)=>isYear(value)?value+'-12-31':value;
 const recordedDate=(value:string)=>isYear(value)?Number(value)>0:validDate(value);
-export const dateLabel=(value:string)=>!value?'¿?':isYear(value)?'??/??/'+value:value.slice(0,4);
+export function dateLabel(value:string){
+ if(!value)return '¿?';
+ if(isYear(value))return `??/??/${value}`;
+ const [year,month,day]=value.split('-');
+ return `${day}/${month}/${year}`;
+}
 function ageOn(birth:string,end:string){
   const [y,m,d]=birth.split('-').map(Number),[ey,em,ed]=end.split('-').map(Number);
   return ey-y-(em<m || (em===m&&ed<d)?1:0);

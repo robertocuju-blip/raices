@@ -19,6 +19,7 @@ f=copy();f.people[0].parents=['missing'];assert.throws(()=>validateFamily(f),/no
 f=copy();f.people[1].id=f.people[0].id;assert.throws(()=>validateFamily(f),/único/);
 assert.equal(layout(demo.people).generations,3);
 assert.equal(dateLabel('1980'),'??/??/1980');
+assert.equal(dateLabel('1980-04-07'),'07/04/1980');
 assert.equal(dateLabel(''),'¿?');
 assert.deepEqual(ageRange({birth:'1980',death:'',deceased:false},'2026-11-06'),{min:45,max:46});
 assert.deepEqual(ageRange({birth:'1980',death:'2020',deceased:true},'2026-11-06'),{min:39,max:40});
@@ -30,7 +31,7 @@ const positions=layout(demo.people).positions;for(const p of demo.people)for(con
 const partial={...demo.people[0],name:'',surname:'García',uncertain:['surname','birth']};
 assert.equal(markedValue(partial,'name'),'¿?');
 assert.equal(markedValue(partial,'surname'),'García?');
-assert.equal(markedValue(partial,'birth',dateLabel(partial.birth)),'1932?');
+assert.equal(markedValue(partial,'birth',dateLabel(partial.birth)),'16/04/1932?');
 assert.equal(initials({...partial,surname:''}),'?');
 assert.equal(searchRelatives([partial],'sin nombre').matches[0],partial);
 f=copy();f.people[0]={...partial,surname:''};validateFamily(f,'2026-11-06');
