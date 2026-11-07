@@ -12,4 +12,6 @@ assert.throws(()=>saveFamily(storage,{title:'Roto',people:[{}]},2));assert.equal
 const full={getItem:k=>storage.getItem(k),setItem(){throw new Error('QuotaExceeded');}};assert.throws(()=>saveFamily(full,demo,2),/no ha podido guardar/);assert.equal(loadFamily(storage).revision,2);
 const other=new MemoryStorage();assert.equal(loadFamily(other),null);
 const corrupt=new MemoryStorage();corrupt.setItem(STORAGE_KEY,'not-json');assert.throws(()=>loadFamily(corrupt));
-console.log('13 comprobaciones superadas: guardado local, recarga, importación, pestañas, aislamiento y fallos de almacenamiento.');
+const uncertain=structuredClone(demo);uncertain.people[0].name='';uncertain.people[0].uncertain=['surname','birth'];
+saveFamily(other,uncertain,0);assert.deepEqual(loadFamily(other).tree,uncertain);
+console.log('Guardado, recarga, importación, aislamiento y conservación de datos dudosos comprobados.');

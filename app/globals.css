@@ -10,3 +10,28 @@
 .branch-reference:hover,.branch-reference:focus-visible{background:#dcebd4}
 .reference-hint{position:absolute;left:74px;right:84px;bottom:30px;text-align:center;color:#415c35;font-size:12px;pointer-events:none}
 @media(max-width:640px){.reference-hint{left:62px;right:68px;bottom:24px;font-size:11px}}
+.tree-tools{position:absolute;bottom:22px;left:24px;display:flex;gap:8px}
+.tree-tools .fit-tree{position:static}
+.reference-hint{left:116px}
+.line-bar{position:absolute;inset:0 0 auto;height:54px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fdfefa;border-bottom:1px solid var(--line)}
+.has-line .tree-canvas{top:54px}
+.line-title{min-width:0;display:flex;align-items:baseline;gap:7px;color:#49613e;font-size:13px}
+.line-title span{flex-shrink:0}
+.line-title strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2f4d38}
+.line-back,.line-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:6px 10px;flex-shrink:0;border:1px solid #b9c9ae;border-radius:7px;background:#f0f5ea;color:#395a35;font-size:12px;font-weight:600;white-space:nowrap}
+.line-back:hover,.line-action:hover{background:#e2eed9}
+.line-action{margin-bottom:13px;min-height:42px}
+.person-node.line-person{outline:3px solid #355b42;outline-offset:3px}
+.chart-picker{max-width:440px}
+.chart-picker-body{padding:18px 24px 22px;color:#49613e;font-size:14px}
+.chart-picker-body>p:first-child{margin-bottom:13px}
+.chart-picker .relative-results>button{min-height:44px;font-size:14px}
+.chart-picker .relative-results small{display:block;margin-top:3px;color:#657858;font-size:11px}
+.doubt-hint{margin:0 0 11px;color:#657858;font-size:12px;line-height:1.4}
+.field-heading{display:flex;align-items:center;justify-content:space-between;gap:5px;min-height:25px}
+.doubt-button{display:inline-grid;vertical-align:middle;place-items:center;width:26px;height:25px;flex-shrink:0;border:1px solid #bccab3;border-radius:5px;color:#49613e;background:#fffefa;font-weight:700;font-size:13px;line-height:1}
+.doubt-button:hover{background:#edf3e7}
+.doubt-button[aria-pressed="true"]{background:#6a502a;border-color:#6a502a;color:#fffefa}
+.gender-field legend .doubt-button{margin-left:4px}
+.gender-doubt{position:absolute;top:-3px;right:-6px;background:#fffefa;border:1px solid #8b7047;border-radius:50%;width:14px;height:14px;font:700 10px/12px Arial;color:#6a502a}
+@media(max-width:640px){.tree-tools{left:16px;bottom:17px}.tree-tools .fit-tree{width:39px;height:39px}.reference-hint{left:106px;right:66px;bottom:21px}.line-bar{padding:0 14px}.line-title{display:block}.line-title span,.line-title strong{display:block}.line-title span{font-size:10px;margin-bottom:2px}.line-back{padding:6px 8px}.chart-picker-body{padding:16px 20px 20px}}

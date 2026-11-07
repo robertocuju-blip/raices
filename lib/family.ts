@@ -1,6 +1,8 @@
 import {orderFamilyRows} from './branch-order.ts';
 
-export type Person = { id:string; name:string; surname:string; gender:string; birth:string; deceased:boolean; death:string; place:string; note:string; parents:string[]; partners:string[] };
+export const UNCERTAIN_FIELDS=['name','surname','gender','birth','death'] as const;
+export type UncertainField=typeof UNCERTAIN_FIELDS[number];
+export type Person = { id:string; name:string; surname:string; gender:string; birth:string; deceased:boolean; death:string; place:string; note:string; parents:string[]; partners:string[]; uncertain?:UncertainField[] };
 export type Family = { title:string; people:Person[] };
 export function todayISO() { return new Intl.DateTimeFormat('en-CA',{timeZone:'Atlantic/Canary',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 export const isYear=(value:string)=>/^\d{4}$/.test(value);
@@ -22,7 +24,9 @@ export function ageRange(p:Pick<Person,'birth'|'death'|'deceased'>,today=todayIS
 export function age(p:Pick<Person,'birth'|'death'|'deceased'>,today=todayISO()):number|null {
   const range=ageRange(p,today);return range&&range.min===range.max?range.min:null;
 }
-export const initials=(p:Person)=>((p.name[0]||'')+(p.surname[0]||'')).toUpperCase();
+export const initials=(p:Person)=>((p.name.trim()[0]||'')+(p.surname.trim()[0]||'')).toUpperCase()||'?';
+export const isUncertain=(p:Person,field:UncertainField)=>p.uncertain?.includes(field)??false;
+export const markedValue=(p:Person,field:UncertainField,value=p[field])=>!value.trim()?'¿?':value+(isUncertain(p,field)&&value!=='¿?'?'?':'');
 export function validDate(s:string) { const d=new Date(s+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(s)&&Number(s.slice(0,4))>0&&!Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s; }
 export function validateFamily(input:unknown, today=todayISO()): asserts input is Family {
   const f=input as Family;
@@ -32,7 +36,7 @@ export function validateFamily(input:unknown, today=todayISO()): asserts input i
     if(!p||typeof p.id!=='string'||!p.id||p.id.length>100||ids.has(p.id)) throw new Error('Cada persona debe tener un identificador único.');
     ids.add(p.id);
     for(const k of ['name','surname','gender','birth','death','place','note'] as const) if(typeof p[k]!=='string'||p[k].length>(k==='note'?10000:200)) throw new Error('Hay un campo de persona no válido.');
-    if(!p.name.trim()||!p.surname.trim()) throw new Error('Escribe el nombre y los apellidos.');
+    if(p.uncertain!==undefined&&(!Array.isArray(p.uncertain)||p.uncertain.some(field=>!UNCERTAIN_FIELDS.includes(field))||new Set(p.uncertain).size!==p.uncertain.length))throw new Error('Hay marcas de duda no válidas.');
     if(!['Mujer','Hombre','No binario','Otro','Sin especificar'].includes(p.gender)||typeof p.deceased!=='boolean') throw new Error('Revisa el género y el estado de la persona.');
     if((p.birth&&(!recordedDate(p.birth)||dateStart(p.birth)>today))||(p.death&&(!recordedDate(p.death)||dateStart(p.death)>today))) throw new Error('Las fechas deben ser válidas y no pueden estar en el futuro.');
     if(p.death&&!p.deceased) throw new Error('Una persona con fecha de defunción debe marcarse como fallecida.');
@@ -80,7 +84,7 @@ export function isAncestor(people:Person[],ancestorId:string,descendantId:string
 const searchKey=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').trim();
 export function searchRelatives(people:Person[],query:string,exclude:string[]=[],limit=8){
  const key=searchKey(query),blocked=new Set(exclude);if(key.length<2)return {matches:[] as Person[],total:0};
- const matches=people.filter(p=>!blocked.has(p.id)&&searchKey(p.name+' '+p.surname).includes(key));return {matches:matches.slice(0,limit),total:matches.length};
+ const matches=people.filter(p=>!blocked.has(p.id)&&searchKey((p.name.trim()||'Sin nombre')+' '+(p.surname.trim()||'Sin apellidos')).includes(key));return {matches:matches.slice(0,limit),total:matches.length};
 }
 export type TreeConnection={id:string;kind:'family'|'couple';d:string;familyKey?:string};
 export type FamilyRoute={key:string;origin:{x:number;y:number};parents:string[];children:{id:string;x:number;y:number}[]};

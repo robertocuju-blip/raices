@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {age,ageRange,dateLabel,demo,validateFamily,layout,validDate} from './lib/family.ts';
+import {age,ageRange,dateLabel,demo,validateFamily,layout,validDate,initials,markedValue,searchRelatives} from './lib/family.ts';
 assert.equal(age({birth:'1993-05-24',death:'',deceased:false},'2026-05-23'),32);
 assert.equal(age({birth:'1993-05-24',death:'',deceased:false},'2026-05-24'),33);
 assert.equal(age({birth:'1932-04-16',death:'2016-04-15',deceased:true},'2026-11-06'),83);
@@ -27,4 +27,12 @@ f=copy();f.people[0].birth='1932';f.people[0].death='2016';validateFamily(f,'202
 f.people[0].death='1931';assert.throws(()=>validateFamily(f,'2026-11-06'),/anterior/);
 f.people[0].death='2027';assert.throws(()=>validateFamily(f,'2026-11-06'),/futuro/);
 const positions=layout(demo.people).positions;for(const p of demo.people)for(const id of p.parents)assert.ok(positions.get(id).y<positions.get(p.id).y);
-console.log('18 comprobaciones superadas: edad, cumpleaños, defunción, fecha bisiesta, fechas inválidas, ciclos y relaciones.');
+const partial={...demo.people[0],name:'',surname:'García',uncertain:['surname','birth']};
+assert.equal(markedValue(partial,'name'),'¿?');
+assert.equal(markedValue(partial,'surname'),'García?');
+assert.equal(markedValue(partial,'birth',dateLabel(partial.birth)),'1932?');
+assert.equal(initials({...partial,surname:''}),'?');
+assert.equal(searchRelatives([partial],'sin nombre').matches[0],partial);
+f=copy();f.people[0]={...partial,surname:''};validateFamily(f,'2026-11-06');
+f.people[0].uncertain=['unrelated'];assert.throws(()=>validateFamily(f),/duda/);
+console.log('Comprobados la edad, las fechas parciales, los nombres desconocidos, las marcas de duda y los vínculos.');
