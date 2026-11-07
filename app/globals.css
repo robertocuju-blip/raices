@@ -35,3 +35,21 @@
 .gender-field legend .doubt-button{margin-left:4px}
 .gender-doubt{position:absolute;top:-3px;right:-6px;background:#fffefa;border:1px solid #8b7047;border-radius:50%;width:14px;height:14px;font:700 10px/12px Arial;color:#6a502a}
 @media(max-width:640px){.tree-tools{left:16px;bottom:17px}.tree-tools .fit-tree{width:39px;height:39px}.reference-hint{left:106px;right:66px;bottom:21px}.line-bar{padding:0 14px}.line-title{display:block}.line-title span,.line-title strong{display:block}.line-title span{font-size:10px;margin-bottom:2px}.line-back{padding:6px 8px}.chart-picker-body{padding:16px 20px 20px}}
+.profile-screen{display:flex;flex-direction:column;flex:1;min-height:0;background:#fdfefa}
+.profile-bar{flex-shrink:0;border-bottom:1px solid var(--line);background:#fdfefa;color:#49613e}
+.profile-bar-inner{display:flex;align-items:center;justify-content:space-between;max-width:720px;min-height:60px;margin:auto;padding:0 32px}
+.profile-back{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:6px 0;font-size:14px;font-weight:600;color:#395a35}
+.profile-back:hover{text-decoration:underline;text-underline-offset:3px}
+.profile-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y pinch-zoom;-webkit-overflow-scrolling:touch}
+.profile-content{max-width:720px;margin:auto;padding:28px 32px calc(32px + env(safe-area-inset-bottom))}
+.profile-kicker{margin:0 0 5px;font-size:13px;color:#657858}
+.profile-content h1{margin:0 0 20px;color:#304b3a;font:400 clamp(26px,5vw,37px)/1.2 Georgia,serif;overflow-wrap:anywhere}
+.profile-content h1:focus{outline:none}
+.profile-fields input:not([type="radio"]):not([type="checkbox"]){font-size:16px;min-height:44px}
+.profile-form-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding:17px 0 20px}
+.profile-form-actions button{min-height:44px;font-size:13px}
+.profile-family-actions{padding:13px 0 0;background:transparent}
+.profile-family-actions .relative-actions{justify-content:flex-start;gap:8px 18px}
+.profile-family-actions .relative-actions button,.profile-family-actions .delete-button{min-height:44px;font-size:12px}
+.profile-family-actions .delete-button{margin:12px 0 0 auto}
+@media(max-width:640px){.profile-bar-inner{min-height:54px;padding:0 20px}.profile-content{padding:21px 20px calc(24px + env(safe-area-inset-bottom))}.profile-content h1{margin-bottom:16px}.profile-family-actions .relative-actions{gap:6px 13px}}
