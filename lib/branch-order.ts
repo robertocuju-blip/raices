@@ -69,7 +69,11 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
   if(!changed)break;
  }}
  const allBands=[...bands.values()],initial=groups.map(blocks=>[...blocks]);
+ const blockIds=new Map(initial.flat().map((block,i)=>[block,i+1]));
+ const signature=()=>groups.map(blocks=>blocks.map(block=>blockIds.get(block)!*(reversed.has(block)?-1:1)).join(',')).join(';');
+ const tried=new Set([signature()]);
  improve();
+ tried.add(signature());
  let best=groups.map(blocks=>[...blocks]),bestScore=score(allBands),bestReversed=new Set(reversed);
  // A marriage between two branches may require several rows to move at
  // once. Try placing its ancestral groups beside each other, in the same
@@ -81,16 +85,19 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
   const parents=block.flatMap(id=>branchOf.get(id)?.parents??[]);
   return [block,[...new Set(parents.map(id=>blocksById.get(id)!))]] as const;
  }));
- type Sides={left:string[];right:string[];above:number};
- function ancestralSides(left:string[],right:string[]){
+ type Sides={left:string[][];right:string[][];above:number};
+ function ancestralSides(first:string[],last:string[]){
   const sides:Sides[]=[];
-  while(left!==right){
-   const level=levels.get(left[0])!;
-   if(level!==levels.get(right[0]))break;
+  let left=[first],right=[last];
+  while(left.length&&right.length){
+   const level=levels.get(left[0][0])!;
+   const combined=[...left,...right];
+   if(new Set(combined).size!==combined.length||combined.some(block=>levels.get(block[0])!==level))break;
    sides.push({left,right,above:rowIndex.get(level)!});
-   const l=parentOrigins.get(left)!,r=parentOrigins.get(right)!;
-   if(l.length!==1||r.length!==1||levels.get(l[0][0])!>=level||levels.get(r[0][0])!>=level)break;
-   left=l[0];right=r[0];
+   // A couple can have two traced ancestries of its own. Follow both as a
+   // unit instead of stopping when either side has more than one origin.
+   const earlier=(blocks:string[][])=>[...new Set(blocks.flatMap(block=>parentOrigins.get(block)!))].filter(block=>levels.get(block[0])!<level);
+   left=earlier(left);right=earlier(right);
   }
   return sides;
  }
@@ -114,19 +121,22 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
     for(const moveLeft of [true,false]){
      reversed.clear();for(const item of startReversed)reversed.add(item);orient(block,reverse);
      start.forEach((blocks,j)=>{groups[j]=[...blocks];rank(groups[j]);});
-     const upper=groups[above];
-     if(moveLeft){upper.splice(upper.indexOf(left),1);upper.splice(upper.indexOf(right),0,left);}
-     else{upper.splice(upper.indexOf(right),1);upper.splice(upper.indexOf(left)+1,0,right);}
+     const moving=new Set(moveLeft?left:right),fixed=new Set(moveLeft?right:left);
+     const moved=groups[above].filter(block=>moving.has(block));
+     const upper=groups[above].filter(block=>!moving.has(block));
+     const index=moveLeft?upper.findIndex(block=>fixed.has(block)):upper.findLastIndex(block=>fixed.has(block))+1;
+     upper.splice(index,0,...moved);groups[above]=upper;
      rank(upper);
      for(let j=above+1;j<groups.length;j++){
-      const preference=(block:string[])=>{const parents=block.flatMap(id=>branchOf.get(id)?.parents??[]);return parents.length?parents.reduce((sum,id)=>sum+ranks.get(id)!,0)/parents.length:Infinity;};
+      const preference=new Map(groups[j].map(block=>{const parents=parentOrigins.get(block)!;const ids=block.flatMap(id=>branchOf.get(id)?.parents??[]);return [block,parents.length?ids.reduce((sum,id)=>sum+ranks.get(id)!,0)/ids.length:Infinity];}));
       const side=facing.get(j);
       // Move the two joining branches to the facing edges of their sibling
       // groups, without inserting a different family between those siblings.
-      const edge=(block:string[])=>block===side?.left?1:block===side?.right?-1:0;
-      groups[j].sort((a,b)=>preference(a)-preference(b)||edge(a)-edge(b));rank(groups[j]);
+      const edge=(block:string[])=>side?.left.includes(block)?1:side?.right.includes(block)?-1:0;
+      groups[j].sort((a,b)=>preference.get(a)!-preference.get(b)!||edge(a)-edge(b));rank(groups[j]);
      }
-     improve();const candidate=score(allBands);
+     const seed=signature();if(tried.has(seed))continue;tried.add(seed);
+     improve();tried.add(signature());const candidate=score(allBands);
      if(candidate<bestScore){best=groups.map(blocks=>[...blocks]);bestScore=candidate;bestReversed=new Set(reversed);}
      if(bestScore<CROSSING_WEIGHT)break;
     }

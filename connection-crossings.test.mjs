@@ -1,13 +1,21 @@
 import assert from 'node:assert/strict';
-import {connectionCrossings} from './lib/connection-crossings.ts';
+import {connectionCrossings,routeReferences} from './lib/connection-crossings.ts';
 import {demo,layout} from './lib/family.ts';
 
 const descendant={id:'stem',kind:'family',familyKey:'f1',d:'M 50 0 C 50 30 50 70 50 100'};
 const couple={id:'couple',kind:'couple',d:'M 0 50 H 100'};
-assert.deepEqual(connectionCrossings([couple,descendant]),[{point:{x:50,y:50},over:couple}],'A crossing is marked without breaking the couple line');
+assert.deepEqual(connectionCrossings([couple,descendant]),[{point:{x:50,y:50},over:couple,under:descendant}],'A crossing is marked without breaking the couple line');
 const branch={id:'brace',kind:'family',familyKey:'f2',d:'M 0 0 C 30 30 70 70 100 100'};
-assert.deepEqual(connectionCrossings([branch,descendant]),[{point:{x:50,y:50},over:descendant}]);
+assert.deepEqual(connectionCrossings([branch,descendant]),[{point:{x:50,y:50},over:descendant,under:branch}]);
 assert.deepEqual(connectionCrossings([{...branch,familyKey:'f1'},descendant]),[],'Branches of the same family are continuous at their junction');
 assert.deepEqual(connectionCrossings([couple,{...descendant,d:'M 50 50 C 50 70 50 80 50 100'}]),[],'A line joining the couple is not an overpass');
-assert.deepEqual(connectionCrossings(layout(demo.people).connections),[],'A planar tree needs no overpasses');
-console.log('Pasos por encima solo en cruces reales; las uniones familiares siguen conectadas.');
+const planar=layout(demo.people);
+assert.deepEqual(routeReferences(planar.connections,planar.routes),{connections:planar.connections,references:[],remaining:[]},'A planar tree needs no references');
+const route={key:'f1',origin:{x:50,y:0},parents:['parent-a','parent-b'],children:[{id:'child-a',x:50,y:100},{id:'child-b',x:75,y:100}]};
+const secondBranch={...branch,d:'M 0 60 C 30 65 70 75 100 80'};
+const marked=routeReferences([couple,secondBranch,descendant],[route]);
+assert.deepEqual(marked.references,[{...route,label:'A'}],'The same reference preserves both parents and every child');
+assert.ok(marked.connections.includes(couple),'A couple connection is never replaced by a reference');
+assert.ok(!marked.connections.includes(descendant));
+assert.deepEqual(connectionCrossings(marked.connections),[]);
+console.log('Referencias solo en los cruces restantes, con las parejas y los vínculos familiares conservados.');

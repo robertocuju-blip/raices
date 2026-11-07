@@ -83,6 +83,7 @@ export function searchRelatives(people:Person[],query:string,exclude:string[]=[]
  const matches=people.filter(p=>!blocked.has(p.id)&&searchKey(p.name+' '+p.surname).includes(key));return {matches:matches.slice(0,limit),total:matches.length};
 }
 export type TreeConnection={id:string;kind:'family'|'couple';d:string;familyKey?:string};
+export type FamilyRoute={key:string;origin:{x:number;y:number};parents:string[];children:{id:string;x:number;y:number}[]};
 export function layout(people:Person[]){
  const links=new Map(people.map(p=>[p.id,new Set([...p.parents,...p.partners])]));
  for(const [id,neighbours] of links)for(const other of neighbours)links.get(other)?.add(id);
@@ -102,7 +103,7 @@ export function layout(people:Person[]){
  for(const component of components.slice(1)){
   const next=layoutComponent(component,result.width);
   for(const [id,pos] of next.positions)result.positions.set(id,pos);
-  result.connections.push(...next.connections);result.junctions.push(...next.junctions);
+  result.connections.push(...next.connections);result.junctions.push(...next.junctions);result.routes.push(...next.routes);
   result.width+=next.width;result.height=Math.max(result.height,next.height);result.generations=Math.max(result.generations,next.generations);
   result.centeringError=Math.max(result.centeringError,next.centeringError);result.hierarchyError||=next.hierarchyError;
  }
@@ -187,7 +188,7 @@ function layoutComponent(people:Person[],offsetX=0){
  const minX=people.length?Math.min(...people.map(p=>xs.get(p.id)!-NODE_WIDTH/2)):0;
  const positions=new Map<string,{x:number;y:number}>();for(const p of people)positions.set(p.id,{x:offsetX+xs.get(p.id)!-minX+32-NODE_WIDTH/2,y:48+g.levels.get(g.groupOf(p.id))!*GENERATION_STEP});
  const width=Math.max(256,...[...positions.values()].map(p=>p.x-offsetX+NODE_WIDTH+32));
- const connections:TreeConnection[]=[],junctions:{id:string;x:number;y:number}[]=[];
+ const connections:TreeConnection[]=[],junctions:{id:string;x:number;y:number}[]=[],routes:FamilyRoute[]=[];
  const unions=new Map<string,{x:number;y:number}>();
  const pairKey=(a:string,b:string)=>[a,b].sort().join('|');
  function connectPair(aId:string,bId:string,kind:'family'|'couple'){
@@ -212,6 +213,7 @@ function layoutComponent(people:Person[],offsetX=0){
   let startX:number,startY:number;
   if(parents.length===1){const p=positions.get(parents[0])!;startX=p.x+NODE_WIDTH/2;startY=p.y+NODE_HEIGHT-.5;}
   else{const anchors=parents.slice(0,-1).map((id,i)=>connectPair(id,parents[i+1],'family'));anchors.sort((a,b)=>Math.abs(a.x-endX)-Math.abs(b.x-endX));startX=anchors[0].x;startY=anchors[0].y;}
+  routes.push({key,origin:{x:startX,y:startY},parents,children:family.children.map(person=>({id:person.id,x:positions.get(person.id)!.x+NODE_WIDTH/2,y:childY})).sort((a,b)=>a.x-b.x)});
   const midY=(startY+endY)/2;connections.push({id:'stem-'+key,kind:'family',familyKey:key,d:'M '+startX+' '+startY+' C '+startX+' '+midY+' '+endX+' '+midY+' '+endX+' '+endY});
   if(kids.length>1){connections.push({id:'children-'+key,kind:'family',familyKey:key,d:brace(leftKid,rightKid,childY,-1)});
    for(const kid of kids.slice(1,-1)){
@@ -221,7 +223,7 @@ function layoutComponent(people:Person[],offsetX=0){
   }
  }
  const generations=people.length?Math.max(...g.levels.values())+1:0;
- return {positions,connections,junctions,centeringError,width,height:Math.max(220,generations*GENERATION_STEP+48),generations,hierarchyError:g.hierarchyError};
+ return {positions,connections,junctions,routes,centeringError,width,height:Math.max(220,generations*GENERATION_STEP+48),generations,hierarchyError:g.hierarchyError};
 }
 export const demo:Family={title:'Familia García',people:[
   {id:'1',name:'Antonio',surname:'García López',gender:'Hombre',birth:'1932-04-16',deceased:true,death:'2016-08-21',place:'Granada, España',note:'Siempre tenía una historia que contar y tiempo para escuchar. Su jardín era el punto de encuentro de toda la familia.',parents:[],partners:['2']},
