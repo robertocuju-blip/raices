@@ -1,7 +1,8 @@
+import {MIN_TREE_ZOOM} from './tree-view.ts';
 export type Point={x:number;y:number};
 export type GestureContext={zoom:number;left:number;top:number;graphLeft:number;graphTop:number};
 export type GestureChange={kind:'pan';left:number;top:number}|{kind:'zoom';zoom:number;anchor:Point;target:Point};
-export const clampZoom=(zoom:number)=>Math.max(.1,Math.min(3,zoom));
+export const clampZoom=(zoom:number)=>Math.max(MIN_TREE_ZOOM,Math.min(3,zoom));
 export function pinchScale(zoom:number,startDistance:number,distance:number){return startDistance>0?clampZoom(zoom*distance/startDistance):zoom;}
 export function treePoint(screen:Point,context:GestureContext):Point{return {x:(screen.x-context.graphLeft)/context.zoom,y:(screen.y-context.graphTop)/context.zoom};}
 export function anchorDelta(anchor:Point,target:Point,left:number,top:number,zoom:number):Point{return {x:left+anchor.x*zoom-target.x,y:top+anchor.y*zoom-target.y};}

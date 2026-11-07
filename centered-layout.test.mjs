@@ -10,4 +10,6 @@ verify([...demo.people,p('extra',['1','2'])]);
 const complex=[p('a',[],['b']),p('b',[],['a']),p('c',['a','b'],['d']),p('d',['e','f'],['c']),p('e',[],['f']),p('f',[],['e']),p('x',['c','d']),p('y',['c','d']),p('sibling',['a','b']),p('grandchild',['x'])];verify(complex);
 const large=[];for(let i=0;i<100;i++)large.push(p('a'+i,[],['b'+i]),p('b'+i,[],['a'+i]),p('c'+i,['a'+i,'b'+i]));verify(large);
 const branches=[p('root-a',[],['root-b']),p('root-b',[],['root-a'])];for(let i=0;i<3;i++){branches.push(p('parent-'+i,['root-a','root-b'],['spouse-'+i]),p('spouse-'+i,[],['parent-'+i]));for(let j=0;j<[1,6,2][i];j++)branches.push(p('kid-'+i+'-'+j,['parent-'+i,'spouse-'+i]));}const grouped=verify(branches);const intervals=[0,1,2].map(i=>{const x=branches.filter(p=>p.id.startsWith('kid-'+i+'-')).map(p=>grouped.positions.get(p.id).x);return {left:Math.min(...x),right:Math.max(...x)+NODE_WIDTH};}).sort((a,b)=>a.left-b.left);for(let i=1;i<intervals.length;i++)assert.ok(intervals[i].left>intervals[i-1].right,'Descendant branches must occupy disjoint blocks');
-console.log('Centrado por familia, troncos verticales y separación de ramas comprobados, incluidos 300 familiares.');
+assert.ok(grouped.width<1975,'Asymmetric sibling families must not reserve excess ancestral margins');
+assert.ok(grouped.height<650,'Generations should use compact vertical spacing');
+console.log('Centrado por familia, anchura compacta, troncos verticales y separación de ramas comprobados, incluidos 300 familiares.');
