@@ -84,6 +84,32 @@ export function searchRelatives(people:Person[],query:string,exclude:string[]=[]
 }
 export type TreeConnection={id:string;kind:'family'|'couple';d:string};
 export function layout(people:Person[]){
+ const links=new Map(people.map(p=>[p.id,new Set([...p.parents,...p.partners])]));
+ for(const [id,neighbours] of links)for(const other of neighbours)links.get(other)?.add(id);
+ const componentOf=new Map<string,number>(),components:Person[][]=[];
+ for(const person of people){
+  if(componentOf.has(person.id))continue;
+  const index=components.length,queue=[person.id];components.push([]);componentOf.set(person.id,index);
+  for(let i=0;i<queue.length;i++)for(const next of links.get(queue[i])??[]){
+   if(!links.has(next)||componentOf.has(next))continue;componentOf.set(next,index);queue.push(next);
+  }
+ }
+ if(components.length<=1)return layoutComponent(people);
+ // Keep unrelated family lines in separate horizontal areas. They still
+ // share one canvas, and joining them through a new relationship recombines them.
+ for(const person of people)components[componentOf.get(person.id)!].push(person);
+ const result=layoutComponent(components[0]);
+ for(const component of components.slice(1)){
+  const next=layoutComponent(component,result.width);
+  for(const [id,pos] of next.positions)result.positions.set(id,pos);
+  result.connections.push(...next.connections);result.junctions.push(...next.junctions);
+  result.width+=next.width;result.height=Math.max(result.height,next.height);result.generations=Math.max(result.generations,next.generations);
+  result.centeringError=Math.max(result.centeringError,next.centeringError);result.hierarchyError||=next.hierarchyError;
+ }
+ return result;
+}
+
+function layoutComponent(people:Person[],offsetX=0){
 
  const g=generationGroups(people),byId=new Map(people.map(p=>[p.id,p]));
  const rowGroups=new Map<number,string[]>();for(const id of g.members.keys()){const level=g.levels.get(id)!;rowGroups.set(level,[...(rowGroups.get(level)??[]),id]);}
@@ -163,8 +189,8 @@ export function layout(people:Person[]){
   for(const [id,x] of best)xs.set(id,x);
  }
  const minX=people.length?Math.min(...people.map(p=>xs.get(p.id)!-NODE_WIDTH/2)):0;
- const positions=new Map<string,{x:number;y:number}>();for(const p of people)positions.set(p.id,{x:xs.get(p.id)!-minX+32-NODE_WIDTH/2,y:48+g.levels.get(g.groupOf(p.id))!*GENERATION_STEP});
- const width=Math.max(256,...[...positions.values()].map(p=>p.x+NODE_WIDTH+32));
+ const positions=new Map<string,{x:number;y:number}>();for(const p of people)positions.set(p.id,{x:offsetX+xs.get(p.id)!-minX+32-NODE_WIDTH/2,y:48+g.levels.get(g.groupOf(p.id))!*GENERATION_STEP});
+ const width=Math.max(256,...[...positions.values()].map(p=>p.x-offsetX+NODE_WIDTH+32));
  const connections:TreeConnection[]=[],junctions:{id:string;x:number;y:number}[]=[];
  const unions=new Map<string,{x:number;y:number}>();
  const pairKey=(a:string,b:string)=>[a,b].sort().join('|');

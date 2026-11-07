@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {layout,COLUMN_STEP} from './lib/family.ts';
+import {layout,COLUMN_STEP,NODE_WIDTH} from './lib/family.ts';
 
 function points(path){
  const n=path.match(/-?(?:\d*\.)?\d+(?:e[+-]?\d+)?/gi).map(Number);
@@ -34,4 +34,27 @@ for(const woman of people.filter(person=>person.gender==='Mujer'))for(const id o
  assert.ok(graph.positions.get(woman.id).x-graph.positions.get(id).x<=COLUMN_STEP*2+.1,'Couples should stay close');
 }
 assert.ok(graph.centeringError<.1);
-console.log('Ramas enlazadas sin cruces, parejas juntas y orden de hombre a la izquierda comprobados.');
+
+// Add another partner's ancestry one generation after the first union.
+// Resolving the second union used to discard the ordering of the first one.
+const growing=[
+ p('mat','Hombre',['earlier','earlier-f'],['mat-f']),p('mat-f','Mujer',[],['mat']),
+ p('relative-m','Hombre',['mat','mat-f'],['relative-f']),p('relative-f','Mujer',[],['relative-m']),p('cousin','Mujer',['relative-m','relative-f']),
+ p('pat','Hombre',[],['pat-f']),p('pat-f','Mujer',[],['pat']),
+ p('father','Hombre',['pat','pat-f'],['mother']),p('mother','Mujer',['mat','mat-f'],['father']),
+ p('outside-m','Hombre',[],['outside-f']),p('outside-f','Mujer',['pat','pat-f'],['outside-m']),p('other-cousin','Hombre',['outside-m','outside-f']),
+ p('child','Hombre',['father','mother'],['partner']),p('partner','Mujer',['incoming','incoming-f'],['child']),
+ p('sister','Mujer',['father','mother']),p('brother','Hombre',['father','mother']),p('grandchild','Mujer',['child','partner']),
+ p('earlier','Hombre',[],['earlier-f']),p('earlier-f','Mujer',[],['earlier']),
+ p('incoming','Hombre',[],['incoming-f']),p('incoming-f','Mujer',[],['incoming']),p('partner-sibling','Hombre',['incoming','incoming-f'])
+];
+const separateIds=new Set(['incoming','incoming-f','partner-sibling']);
+const separate=growing.map(person=>person.id==='partner'?{...person,parents:[]}:person);
+const twoTrees=layout(separate),connected=layout(growing);
+const leftEdge=Math.min(...[...separateIds].map(id=>twoTrees.positions.get(id).x));
+const rightEdge=Math.max(...separate.filter(person=>!separateIds.has(person.id)).map(person=>twoTrees.positions.get(person.id).x+NODE_WIDTH));
+assert.ok(leftEdge-rightEdge>=64-.01,'Unconnected lineages must not interleave');
+assert.deepEqual(crossingPairs(twoTrees),[]);
+assert.deepEqual(crossingPairs(connected),[],'Adding a second ancestral branch must preserve the earlier uncrossed layout');
+assert.equal(connected.positions.size,growing.length,'The full tree always keeps every person');
+console.log('Árbol completo: ramas independientes separadas, uniones sucesivas sin cruces, parejas juntas y en orden.');

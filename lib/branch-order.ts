@@ -1,5 +1,6 @@
 type Branch={parents:string[];children:string[]};
 type Row={level:number;ids:string[]};
+const CROSSING_WEIGHT=1e7;
 
 // Reorder whole couple groups before assigning pixels. A downward-only sort
 // cannot see when a later union needs its two lines of ancestry side by side.
@@ -39,7 +40,7 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
     start=end;
    }
   }
-  return crossings*1e7+gaps;
+  return crossings*CROSSING_WEIGHT+gaps;
  }
  function improve(){for(let sweep=0;sweep<8;sweep++){
   let changed=false;
@@ -69,28 +70,36 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
  // order as the couple, then propagate that order to the rows below.
  const branchOf=new Map(branches.flatMap(branch=>branch.children.map(id=>[id,branch] as const)));
  const rowIndex=new Map(rows.map((row,i)=>[row.level,i]));
- for(let i=1,attempts=0;i<initial.length&&attempts<12&&bestScore>=1e7;i++)for(const block of initial[i]){
-  if(attempts>=12||bestScore<1e7)break;
+ const bridges=initial.slice(1).flat().flatMap(block=>{
   const first=branchOf.get(block[0]),last=branchOf.get(block.at(-1)!);
-  if(!first||!last||first===last)continue;
+  if(!first||!last||first===last)return [];
   const left=first.parents[0],right=last.parents[0],level=levels.get(left)!;
-  if(level!==levels.get(right)||groupOf(left)===groupOf(right))continue;
-  attempts++;
-  const above=rowIndex.get(level)!;
-  for(const moveLeft of [true,false]){
-   initial.forEach((blocks,j)=>{groups[j]=[...blocks];rank(groups[j]);});
-   const upper=groups[above],a=upper.find(b=>b.includes(left))!,b=upper.find(b=>b.includes(right))!;
-   if(moveLeft){upper.splice(upper.indexOf(a),1);upper.splice(upper.indexOf(b),0,a);}
-   else{upper.splice(upper.indexOf(b),1);upper.splice(upper.indexOf(a)+1,0,b);}
-   rank(upper);
-   for(let j=above+1;j<groups.length;j++){
-    const preference=(block:string[])=>{const parents=block.flatMap(id=>branchOf.get(id)?.parents??[]);return parents.length?parents.reduce((sum,id)=>sum+ranks.get(id)!,0)/parents.length:Infinity;};
-    groups[j].sort((a,b)=>preference(a)-preference(b));rank(groups[j]);
+  return level===levels.get(right)&&groupOf(left)!==groupOf(right)?[{left,right,above:rowIndex.get(level)!}]:[];
+ });
+ const searchBudget=rows.reduce((size,row)=>size+row.ids.length,0)>300?12:36;
+ for(let sweep=0,attempts=0;sweep<3&&attempts<searchBudget&&bestScore>=CROSSING_WEIGHT;sweep++){
+  const before=bestScore;
+  for(const {left,right,above} of bridges){
+   if(attempts>=searchBudget||bestScore<CROSSING_WEIGHT)break;
+   attempts++;
+   // Start from the best order so later unions keep the earlier improvements.
+   const start=best;
+   for(const moveLeft of [true,false]){
+    start.forEach((blocks,j)=>{groups[j]=[...blocks];rank(groups[j]);});
+    const upper=groups[above],a=upper.find(b=>b.includes(left))!,b=upper.find(b=>b.includes(right))!;
+    if(moveLeft){upper.splice(upper.indexOf(a),1);upper.splice(upper.indexOf(b),0,a);}
+    else{upper.splice(upper.indexOf(b),1);upper.splice(upper.indexOf(a)+1,0,b);}
+    rank(upper);
+    for(let j=above+1;j<groups.length;j++){
+     const preference=(block:string[])=>{const parents=block.flatMap(id=>branchOf.get(id)?.parents??[]);return parents.length?parents.reduce((sum,id)=>sum+ranks.get(id)!,0)/parents.length:Infinity;};
+     groups[j].sort((a,b)=>preference(a)-preference(b));rank(groups[j]);
+    }
+    improve();const candidate=score(allBands);
+    if(candidate<bestScore){best=groups.map(blocks=>[...blocks]);bestScore=candidate;}
+    if(bestScore<CROSSING_WEIGHT)break;
    }
-   improve();const candidate=score(allBands);
-   if(candidate<bestScore){best=groups.map(blocks=>[...blocks]);bestScore=candidate;}
-   if(bestScore<1e7)break;
   }
+  if(bestScore===before)break;
  }
  best.forEach((blocks,i)=>{rows[i].ids=blocks.flat();});
 }
