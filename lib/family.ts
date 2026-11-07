@@ -147,13 +147,13 @@ function layoutComponent(people:Person[],offsetX=0){
   const projected=projectRow(row.ids.map(id=>xs.get(id)!),row.offsets);row.ids.forEach((id,i)=>xs.set(id,projected[i]));
  }
  const constraints=[...families.values()].map(f=>{const parents=[...f.parents].sort((a,b)=>xs.get(a)!-xs.get(b)!),children=[...f.children].sort((a,b)=>xs.get(a)!-xs.get(b)!);const coefficients=new Map<string,number>();for(const [id,w] of [[parents[0],.5],[parents.at(-1)!,.5],[children[0],-.5],[children.at(-1)!,-.5]] as [string,number][])coefficients.set(id,(coefficients.get(id)??0)+w);const entries=[...coefficients].filter(([,w])=>w!==0);return {entries,norm:entries.reduce((n,[,w])=>n+w*w,0),correction:entries.map(()=>0)};});
- const centreConstraints=constraints.map(c=>({...c,target:0,upper:false}));
+ const centreConstraints=constraints.map(c=>({...c,target:0,upper:false,tolerance:0}));
  const coupleConstraints=rows.flatMap(row=>row.ids.slice(1).flatMap((right,i)=>{
   const left=row.ids[i],group=g.groupOf(left);
   if(group!==g.groupOf(right)||g.members.get(group)!.length!==2)return [];
   // Two independently traced ancestries can require a wider union.
   const target=COLUMN_STEP*(byId.get(left)!.parents.length&&byId.get(right)!.parents.length?2:1);
-  return [{entries:[[left,-1],[right,1]] as [string,number][],norm:2,correction:[0,0],target,upper:true}];
+  return [{entries:[[left,-1],[right,1]] as [string,number][],norm:2,correction:[0,0],target,upper:true,tolerance:0}];
  }));
  // Dykstra projects onto family centres, row spacing and optional limits.
  function solve(source:Map<string,number>,limits:typeof centreConstraints,maxIterations:number,span?:number){
@@ -162,10 +162,10 @@ function layoutComponent(people:Person[],offsetX=0){
   limits.forEach(c=>c.correction.fill(0));rows.forEach(row=>row.correction.fill(0));
   const boundsCorrection=new Map<string,number>();let error=Infinity;
   for(let iteration=0;iteration<maxIterations;iteration++){
-   for(const c of limits){if(!c.norm)continue;const input=c.entries.map(([id],i)=>xs.get(id)!+c.correction[i]);const delta=(c.entries.reduce((sum,[,w],i)=>sum+w*input[i],0)-c.target)/c.norm;const adjustment=c.upper?Math.max(0,delta):delta;c.entries.forEach(([id,w],i)=>{const value=input[i]-w*adjustment;c.correction[i]=input[i]-value;xs.set(id,value);});}
+   for(const c of limits){if(!c.norm)continue;const input=c.entries.map(([id],i)=>xs.get(id)!+c.correction[i]);const delta=c.entries.reduce((sum,[,w],i)=>sum+w*input[i],0)-c.target;const adjustment=(c.upper?Math.max(0,delta):Math.sign(delta)*Math.max(0,Math.abs(delta)-c.tolerance))/c.norm;c.entries.forEach(([id,w],i)=>{const value=input[i]-w*adjustment;c.correction[i]=input[i]-value;xs.set(id,value);});}
    for(const row of rows){const input=row.ids.map((id,i)=>xs.get(id)!+row.correction[i]),output=projectRow(input,row.offsets);row.ids.forEach((id,i)=>{row.correction[i]=input[i]-output[i];xs.set(id,output[i]);});}
    if(span!==undefined)for(const [id,x] of xs){const input=x+(boundsCorrection.get(id)??0),value=Math.max(-span/2,Math.min(span/2,input));boundsCorrection.set(id,input-value);xs.set(id,value);}
-   error=limits.reduce((maximum,c)=>{const delta=c.entries.reduce((sum,[id,w])=>sum+xs.get(id)!*w,0)-c.target;return Math.max(maximum,c.upper?delta:Math.abs(delta));},0);
+   error=limits.reduce((maximum,c)=>{const delta=c.entries.reduce((sum,[id,w])=>sum+xs.get(id)!*w,0)-c.target;return Math.max(maximum,c.upper?delta:Math.abs(delta)-c.tolerance);},0);
    if(span!==undefined)for(const row of rows)for(let i=1;i<row.ids.length;i++)error=Math.max(error,COLUMN_STEP-xs.get(row.ids[i])!+xs.get(row.ids[i-1])!);
    if(error<.03)break;
   }
@@ -193,6 +193,34 @@ function layoutComponent(people:Person[],offsetX=0){
    if(error<.03){best=new Map(xs);upper=span;centeringError=error;}else lower=span;
   }
   for(const [id,x] of best)xs.set(id,x);
+ }
+ // A narrow envelope can still leave empty spaces between branches. Aim at
+ // those spaces separately, keeping row order, card spacing and couple bounds.
+ const gapThreshold=COLUMN_STEP*2;
+ function gapCost(positions:Map<string,number>){
+  return rows.reduce((cost,row)=>cost+row.ids.slice(1).reduce((sum,id,i)=>sum+Math.max(0,positions.get(id)!-positions.get(row.ids[i])!-gapThreshold)**2,0),0);
+ }
+ const hasLargeGap=rows.some(row=>row.ids.some((id,i)=>i>0&&xs.get(id)!-xs.get(row.ids[i-1])!>COLUMN_STEP*4));
+ if(!g.hierarchyError&&centeringError<.03&&hasLargeGap){
+  const original=new Map(xs),target=new Map(xs);
+  for(const row of rows){
+   const coordinates=row.ids.map(id=>original.get(id)!);
+   const compact=coordinates.map((x,i)=>i?Math.min(x-coordinates[i-1],gapThreshold):x);
+   for(let i=1;i<compact.length;i++)compact[i]+=compact[i-1];
+   const shift=coordinates.reduce((sum,x,i)=>sum+x-compact[i],0)/coordinates.length;
+   row.ids.forEach((id,i)=>target.set(id,compact[i]+shift));
+  }
+  const span=Math.max(...original.values())-Math.min(...original.values())+.05;
+  let best=original,bestCost=gapCost(original);
+  // Try exact centring first. For very wide gaps, permit a shift of half a
+  // column only if the tighter layout reduces the gap cost substantially.
+  for(const tolerance of [0,COLUMN_STEP/2]){
+   const limits=allConstraints.map(c=>c.upper?c:{...c,tolerance});
+   const error=solve(target,limits,tolerance===0?350:900,span),cost=gapCost(xs);
+   if(error<.03&&cost<bestCost*(tolerance===0?1:.95)){best=new Map(xs);bestCost=cost;}
+  }
+  for(const [id,x] of best)xs.set(id,x);
+  centeringError=centreConstraints.reduce((maximum,c)=>Math.max(maximum,Math.abs(c.entries.reduce((sum,[id,w])=>sum+xs.get(id)!*w,0))),0);
  }
  const minX=people.length?Math.min(...people.map(p=>xs.get(p.id)!-NODE_WIDTH/2)):0;
  const positions=new Map<string,{x:number;y:number}>();for(const p of people)positions.set(p.id,{x:offsetX+xs.get(p.id)!-minX+32-NODE_WIDTH/2,y:48+g.levels.get(g.groupOf(p.id))!*GENERATION_STEP});
