@@ -35,7 +35,7 @@ export default function FamilyApp(){
   const pairKeys=new Set<string>();const addPair=(a:string,b:string)=>pairKeys.add(JSON.stringify([a,b].sort()));
   for(const person of branch)for(const partner of person.partners)addPair(person.id,partner);
   for(const route of routes)route.parents.forEach((a,i)=>route.parents.slice(i+1).forEach(b=>addPair(a,b)));
-  return {keys,pairKeys};
+  return {keys,pairKeys,people:byId};
  },[selected,visiblePeople,graph.routes]);
  function branchClass(line:Pick<TreeConnection,'familyKey'|'people'>){
   if(!spotlight)return '';
@@ -86,7 +86,9 @@ export default function FamilyApp(){
       {drawing.lines.map(line=><path key={line.id} data-connection={line.kind} className={(line.kind==='couple'?'couple-brace':'family-brace')+branchClass(line)} d={line.d} mask={maskIds.has(line.id)?`url(#${maskIds.get(line.id)})`:undefined}/>)}
       {drawing.bridges.map(bridge=><path key={bridge.id} className={'line-bridge'+(bridge.over.kind==='couple'?' couple-brace':'')+branchClass(bridge.over)} d={bridge.d}/>)}
       {graph.junctions.map(junction=><circle key={junction.id} className={'family-junction'+branchClass(junction)} cx={junction.x} cy={junction.y} r={2.5}/>)}</svg>
-     {visiblePeople.map(p=>{const pos=graph.positions.get(p.id)!,picked=p.id===selected?.id;return <button key={p.id} data-person-id={p.id} className={'person-node '+(p.gender==='Mujer'?'female':p.gender==='Hombre'?'male':'unspecified')+(picked||!selected&&p.id===viewId?' line-person':'')} title={markedValue(p,'gender')} aria-current={picked||p.id===viewId?'true':undefined} style={{left:pos.x,top:pos.y}} onClick={()=>tapPerson(p.id)} aria-label={`${picked?'Editar a':'Resaltar la línea de'} ${full(p)}${isUncertain(p,'gender')?', género dudoso':''}`}><span className={'avatar '+(p.gender==='Hombre'?'blue':p.gender==='Mujer'?'pink':'neutral')}>{initials(p)}{isUncertain(p,'gender')&&<span className="gender-doubt" aria-hidden="true">?</span>}{p.deceased&&<span className="deceased-mark" aria-label="Fallecido/a">✧</span>}</span><span className="node-name">{markedValue(p,'name')}</span><span className="node-surname">{markedValue(p,'surname')}</span><span className="node-dates">{nodeDates(p)}</span></button>;})}
+     {visiblePeople.map(p=>{const pos=graph.positions.get(p.id)!,picked=p.id===selected?.id;
+      const muted=spotlight!==null&&!spotlight.people.has(p.id);
+      return <button key={p.id} data-person-id={p.id} className={'person-node '+(p.gender==='Mujer'?'female':p.gender==='Hombre'?'male':'unspecified')+(picked||!selected&&p.id===viewId?' line-person':'')+(muted?' card-muted':'')} title={markedValue(p,'gender')} aria-current={picked||p.id===viewId?'true':undefined} style={{left:pos.x,top:pos.y}} onClick={()=>tapPerson(p.id)} aria-label={`${picked?'Editar a':'Resaltar la línea de'} ${full(p)}${isUncertain(p,'gender')?', género dudoso':''}`}><span className={'avatar '+(p.gender==='Hombre'?'blue':p.gender==='Mujer'?'pink':'neutral')}>{initials(p)}{isUncertain(p,'gender')&&<span className="gender-doubt" aria-hidden="true">?</span>}{p.deceased&&<span className="deceased-mark" aria-label="Fallecido/a">✧</span>}</span><span className="node-name">{markedValue(p,'name')}</span><span className="node-surname">{markedValue(p,'surname')}</span><span className="node-dates">{nodeDates(p)}</span></button>;})}
     </div></div></div>}
    </div>
    {family.people.length>0&&<><div className="tree-tools"><button className="fit-tree" aria-label={focused?'Encuadrar línea familiar':'Ver árbol completo'} title={focused?'Encuadrar línea familiar':'Ver árbol completo'} onClick={fitTree}><Maximize size={17}/></button><button className="fit-tree" aria-label="Buscar persona" title="Buscar persona" onClick={()=>setSearchOpen(true)}><Search size={17}/></button></div><button className="add-person" aria-label="Añadir persona" title="Añadir persona" onClick={()=>add()} disabled={!ready||busy}><Plus size={23}/></button></>}

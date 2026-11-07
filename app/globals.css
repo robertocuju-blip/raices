@@ -20,6 +20,11 @@
 .line-back:hover,.line-action:hover{background:#e2eed9}
 .line-action{margin-bottom:13px;min-height:42px}
 .person-node.line-person{outline:3px solid #355b42;outline-offset:3px}
+.person-node.card-muted.female{background:#f8eaf0;border-color:#d8b4c4}
+.person-node.card-muted.male{background:#e4eef8;border-color:#afc7dc}
+.person-node.card-muted.unspecified{background:#f3f5f0;border-color:#c5cebd}
+.person-node.card-muted .pink{background:#efd5e1}
+.person-node.card-muted .blue{background:#d2e2f2}
 .chart-picker{max-width:440px}
 .chart-picker-body{padding:18px 24px 22px;color:#49613e;font-size:14px}
 .chart-picker-body>p:first-child{margin-bottom:13px}
