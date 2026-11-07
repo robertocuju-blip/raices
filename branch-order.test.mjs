@@ -57,4 +57,11 @@ assert.ok(leftEdge-rightEdge>=64-.01,'Unconnected lineages must not interleave')
 assert.deepEqual(crossingPairs(twoTrees),[]);
 assert.deepEqual(crossingPairs(connected),[],'Adding a second ancestral branch must preserve the earlier uncrossed layout');
 assert.equal(connected.positions.size,growing.length,'The full tree always keeps every person');
+// Filling in the grandparents of an already linked ancestor can require
+// moving the two ancestral branches together, several generations above.
+const deeper=growing.map(person=>person.id==='pat'?{...person,parents:['old-father','old-mother']}:person);
+deeper.push(p('old-father','Hombre',[],['old-mother']),p('old-mother','Mujer',[],['old-father']),...['a','b','c'].map(id=>p('old-sibling-'+id,'Mujer',['old-father','old-mother'])));
+const deepGraph=layout(deeper);
+assert.deepEqual(crossingPairs(deepGraph),[],'Adding earlier ancestors must not interleave existing sibling branches');
+assert.equal(deepGraph.positions.size,deeper.length);
 console.log('Árbol completo: ramas independientes separadas, uniones sucesivas sin cruces, parejas juntas y en orden.');

@@ -70,33 +70,58 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
  // order as the couple, then propagate that order to the rows below.
  const branchOf=new Map(branches.flatMap(branch=>branch.children.map(id=>[id,branch] as const)));
  const rowIndex=new Map(rows.map((row,i)=>[row.level,i]));
+ const blocksById=new Map(initial.flat().flatMap(block=>block.map(id=>[id,block] as const)));
+ const parentOrigins=new Map(initial.flat().map(block=>{
+  const parents=block.flatMap(id=>branchOf.get(id)?.parents??[]);
+  return [block,[...new Set(parents.map(id=>blocksById.get(id)!))]] as const;
+ }));
+ type Sides={left:string[];right:string[];above:number};
+ function ancestralSides(left:string[],right:string[]){
+  const sides:Sides[]=[];
+  while(left!==right){
+   const level=levels.get(left[0])!;
+   if(level!==levels.get(right[0]))break;
+   sides.push({left,right,above:rowIndex.get(level)!});
+   const l=parentOrigins.get(left)!,r=parentOrigins.get(right)!;
+   if(l.length!==1||r.length!==1||levels.get(l[0][0])!>=level||levels.get(r[0][0])!>=level)break;
+   left=l[0];right=r[0];
+  }
+  return sides;
+ }
  const bridges=initial.slice(1).flat().flatMap(block=>{
   const first=branchOf.get(block[0]),last=branchOf.get(block.at(-1)!);
   if(!first||!last||first===last)return [];
-  const left=first.parents[0],right=last.parents[0],level=levels.get(left)!;
-  return level===levels.get(right)&&groupOf(left)!==groupOf(right)?[{left,right,above:rowIndex.get(level)!}]:[];
+  const sides=ancestralSides(blocksById.get(first.parents[0])!,blocksById.get(last.parents[0])!);
+  return sides.length?[sides]:[];
  });
  const searchBudget=rows.reduce((size,row)=>size+row.ids.length,0)>300?12:36;
  for(let sweep=0,attempts=0;sweep<3&&attempts<searchBudget&&bestScore>=CROSSING_WEIGHT;sweep++){
   const before=bestScore;
-  for(const {left,right,above} of bridges){
+  for(const sides of bridges){
    if(attempts>=searchBudget||bestScore<CROSSING_WEIGHT)break;
-   attempts++;
    // Start from the best order so later unions keep the earlier improvements.
    const start=best;
-   for(const moveLeft of [true,false]){
-    start.forEach((blocks,j)=>{groups[j]=[...blocks];rank(groups[j]);});
-    const upper=groups[above],a=upper.find(b=>b.includes(left))!,b=upper.find(b=>b.includes(right))!;
-    if(moveLeft){upper.splice(upper.indexOf(a),1);upper.splice(upper.indexOf(b),0,a);}
-    else{upper.splice(upper.indexOf(b),1);upper.splice(upper.indexOf(a)+1,0,b);}
-    rank(upper);
-    for(let j=above+1;j<groups.length;j++){
-     const preference=(block:string[])=>{const parents=block.flatMap(id=>branchOf.get(id)?.parents??[]);return parents.length?parents.reduce((sum,id)=>sum+ranks.get(id)!,0)/parents.length:Infinity;};
-     groups[j].sort((a,b)=>preference(a)-preference(b));rank(groups[j]);
+   for(const depth of new Set([sides.length-1,Math.min(1,sides.length-1),0])){
+    if(attempts++>=searchBudget||bestScore<CROSSING_WEIGHT)break;
+    const {left,right,above}=sides[depth],facing=new Map(sides.slice(0,depth).map(side=>[side.above,side]));
+    for(const moveLeft of [true,false]){
+     start.forEach((blocks,j)=>{groups[j]=[...blocks];rank(groups[j]);});
+     const upper=groups[above];
+     if(moveLeft){upper.splice(upper.indexOf(left),1);upper.splice(upper.indexOf(right),0,left);}
+     else{upper.splice(upper.indexOf(right),1);upper.splice(upper.indexOf(left)+1,0,right);}
+     rank(upper);
+     for(let j=above+1;j<groups.length;j++){
+      const preference=(block:string[])=>{const parents=block.flatMap(id=>branchOf.get(id)?.parents??[]);return parents.length?parents.reduce((sum,id)=>sum+ranks.get(id)!,0)/parents.length:Infinity;};
+      const side=facing.get(j);
+      // Move the two joining branches to the facing edges of their sibling
+      // groups, without inserting a different family between those siblings.
+      const edge=(block:string[])=>block===side?.left?1:block===side?.right?-1:0;
+      groups[j].sort((a,b)=>preference(a)-preference(b)||edge(a)-edge(b));rank(groups[j]);
+     }
+     improve();const candidate=score(allBands);
+     if(candidate<bestScore){best=groups.map(blocks=>[...blocks]);bestScore=candidate;}
+     if(bestScore<CROSSING_WEIGHT)break;
     }
-    improve();const candidate=score(allBands);
-    if(candidate<bestScore){best=groups.map(blocks=>[...blocks]);bestScore=candidate;}
-    if(bestScore<CROSSING_WEIGHT)break;
    }
   }
   if(bestScore===before)break;

@@ -1,8 +1,9 @@
 'use client';
-import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useId,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {Sprout,Plus,Download,Upload,Check,Maximize,X,Trash2,ChevronDown,LoaderCircle,Search} from 'lucide-react';
 import {useTreeGestures} from '../hooks/use-tree-gestures';
 import {fitTreeZoom} from '../lib/tree-view';
+import {connectionCrossings} from '../lib/connection-crossings';
 import {loadFamily,saveFamily,STORAGE_KEY} from '../lib/storage';
 import {ageRange,dateLabel,dateStart,isYear,initials,layout,todayISO,validateFamily,assertHierarchy,isAncestor,searchRelatives,type Family,type Person} from '../lib/family';
 const emptyFamily:Family={title:'Mi familia',people:[]};
@@ -15,6 +16,7 @@ export default function FamilyApp(){
  const [family,setFamily]=useState<Family>(emptyFamily),[ready,setReady]=useState(false),[revision,setRevision]=useState(0),[zoom,setZoom]=useState(1),[editor,setEditor]=useState<Editor|null>(null),[confirmation,setConfirmation]=useState<'delete'|'import'|null>(null),[pendingImport,setPendingImport]=useState<Family|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const importer=useRef<HTMLInputElement>(null),viewport=useRef<HTMLDivElement>(null),previousFocus=useRef<HTMLElement|null>(null);
  const graph=useMemo(()=>layout(family.people),[family.people]);
+ const crossings=useMemo(()=>connectionCrossings(graph.connections),[graph.connections]),crossingPrefix=useId();
  const initialFitDone=useRef(false);
  const [fitRequest,setFitRequest]=useState(0),lastFitRequest=useRef(0);
  function fitTree(){const el=viewport.current;if(!el)return;const inner=el.querySelector<HTMLElement>('.canvas-inner');if(!inner)return;const style=getComputedStyle(inner);const horizontal=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight),vertical=parseFloat(style.paddingTop)+parseFloat(style.paddingBottom);setZoom(fitTreeZoom(graph.width,graph.height,el.clientWidth-horizontal-2,el.clientHeight-vertical-2));setFitRequest(n=>n+1);}
@@ -44,7 +46,11 @@ export default function FamilyApp(){
    {error&&!dialogOpen&&<div className="error-toast" role="alert"><span>{error}</span><button aria-label="Cerrar aviso" onClick={()=>setError('')}><X size={16}/></button></div>}
    <div ref={viewport} className="tree-canvas" {...gestures}>
     {!ready?<div className="empty-state"><LoaderCircle size={22} className="spin" aria-label="Cargando árbol"/></div>:family.people.length===0?<div className="empty-state"><Sprout size={42} strokeWidth={1.2}/><h1>Tu árbol empieza aquí.</h1><button className="primary" onClick={()=>add()}><Plus size={16}/>Añadir primera persona</button></div>:<div className="canvas-inner"><div className="graph-space" style={{width:graph.width*zoom,height:graph.height*zoom}}><div className="graph" style={{width:graph.width,height:graph.height,transform:`scale(${zoom})`}}>
-     <svg width={graph.width} height={graph.height} className="connections" aria-hidden="true">{graph.connections.map(connection=><path key={connection.id} data-connection={connection.kind} className={connection.kind==='couple'?'couple-brace':'family-brace'} d={connection.d}/>)}{graph.junctions.map(junction=><circle key={junction.id} className="family-junction" cx={junction.x} cy={junction.y} r={2.5}/>)}</svg>
+     <svg width={graph.width} height={graph.height} className="connections" aria-hidden="true">
+      {crossings.length>0&&<defs>{crossings.map(({point},i)=><clipPath key={i} id={`${crossingPrefix}-${i}`}><circle cx={point.x} cy={point.y} r={8}/></clipPath>)}</defs>}
+      {graph.connections.map(connection=><path key={connection.id} data-connection={connection.kind} className={connection.kind==='couple'?'couple-brace':'family-brace'} d={connection.d}/>)}
+      {crossings.map(({over},i)=><g key={i} clipPath={`url(#${crossingPrefix}-${i})`} className="line-overpass"><path className="crossing-halo" d={over.d}/><path className={over.kind==='couple'?'couple-brace':'family-brace'} d={over.d}/></g>)}
+      {graph.junctions.map(junction=><circle key={junction.id} className="family-junction" cx={junction.x} cy={junction.y} r={2.5}/>)}</svg>
      {family.people.map(p=>{const pos=graph.positions.get(p.id)!;return <button key={p.id} className={'person-node '+(p.gender==='Mujer'?'female':p.gender==='Hombre'?'male':'unspecified')} title={p.gender} style={{left:pos.x,top:pos.y}} onClick={()=>{setError('');setEditor({person:{...p},mode:'edit'});}} aria-label={`Editar a ${full(p)}`}><span className={'avatar '+(p.gender==='Hombre'?'blue':p.gender==='Mujer'?'pink':'neutral')}>{initials(p)}{p.deceased&&<span className="deceased-mark" aria-label="Fallecido/a">✧</span>}</span><span className="node-name">{p.name}</span><span className="node-surname">{p.surname}</span><span className="node-dates">{nodeDates(p)}</span></button>;})}
     </div></div></div>}
    </div>

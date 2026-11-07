@@ -82,7 +82,7 @@ export function searchRelatives(people:Person[],query:string,exclude:string[]=[]
  const key=searchKey(query),blocked=new Set(exclude);if(key.length<2)return {matches:[] as Person[],total:0};
  const matches=people.filter(p=>!blocked.has(p.id)&&searchKey(p.name+' '+p.surname).includes(key));return {matches:matches.slice(0,limit),total:matches.length};
 }
-export type TreeConnection={id:string;kind:'family'|'couple';d:string};
+export type TreeConnection={id:string;kind:'family'|'couple';d:string;familyKey?:string};
 export function layout(people:Person[]){
  const links=new Map(people.map(p=>[p.id,new Set([...p.parents,...p.partners])]));
  for(const [id,neighbours] of links)for(const other of neighbours)links.get(other)?.add(id);
@@ -216,11 +216,11 @@ function layoutComponent(people:Person[],offsetX=0){
   let startX:number,startY:number;
   if(parents.length===1){const p=positions.get(parents[0])!;startX=p.x+NODE_WIDTH/2;startY=p.y+NODE_HEIGHT-.5;}
   else{const anchors=parents.slice(0,-1).map((id,i)=>connectPair(id,parents[i+1],'family'));anchors.sort((a,b)=>Math.abs(a.x-endX)-Math.abs(b.x-endX));startX=anchors[0].x;startY=anchors[0].y;}
-  const midY=(startY+endY)/2;connections.push({id:'stem-'+key,kind:'family',d:'M '+startX+' '+startY+' C '+startX+' '+midY+' '+endX+' '+midY+' '+endX+' '+endY});
-  if(kids.length>1){connections.push({id:'children-'+key,kind:'family',d:brace(leftKid,rightKid,childY,-1)});
+  const midY=(startY+endY)/2;connections.push({id:'stem-'+key,kind:'family',familyKey:key,d:'M '+startX+' '+startY+' C '+startX+' '+midY+' '+endX+' '+midY+' '+endX+' '+endY});
+  if(kids.length>1){connections.push({id:'children-'+key,kind:'family',familyKey:key,d:brace(leftKid,rightKid,childY,-1)});
    for(const kid of kids.slice(1,-1)){
     const x=kid.x+NODE_WIDTH/2,mid=(leftKid+rightKid)/2;const control=x<=mid?[leftKid,leftKid,mid-16,mid]:[mid,mid+16,rightKid,rightKid];const ys=x<=mid?[childY,childY-22,childY-5,childY-30]:[childY-30,childY-5,childY-22,childY];
-    const cubic=(a:number[],t:number)=>a[0]*(1-t)**3+3*a[1]*(1-t)**2*t+3*a[2]*(1-t)*t*t+a[3]*t**3;let low=0,high=1;for(let i=0;i<24;i++){const t=(low+high)/2;if(cubic(control,t)<x)low=t;else high=t;}const y=cubic(ys,(low+high)/2);connections.push({id:'child-'+key+'-'+x,kind:'family',d:'M '+x+' '+y+' C '+x+' '+(y+10)+' '+x+' '+(childY-10)+' '+x+' '+childY});
+    const cubic=(a:number[],t:number)=>a[0]*(1-t)**3+3*a[1]*(1-t)**2*t+3*a[2]*(1-t)*t*t+a[3]*t**3;let low=0,high=1;for(let i=0;i<24;i++){const t=(low+high)/2;if(cubic(control,t)<x)low=t;else high=t;}const y=cubic(ys,(low+high)/2);connections.push({id:'child-'+key+'-'+x,kind:'family',familyKey:key,d:'M '+x+' '+y+' C '+x+' '+(y+10)+' '+x+' '+(childY-10)+' '+x+' '+childY});
    }
   }
  }
