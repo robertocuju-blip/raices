@@ -86,7 +86,7 @@ export function searchRelatives(people:Person[],query:string,exclude:string[]=[]
  const key=searchKey(query),blocked=new Set(exclude);if(key.length<2)return {matches:[] as Person[],total:0};
  const matches=people.filter(p=>!blocked.has(p.id)&&searchKey((p.name.trim()||'Sin nombre')+' '+(p.surname.trim()||'Sin apellidos')).includes(key));return {matches:matches.slice(0,limit),total:matches.length};
 }
-export type TreeConnection={id:string;kind:'family'|'couple';d:string;familyKey?:string};
+export type TreeConnection={id:string;kind:'family'|'couple';d:string;familyKey?:string;people?:string[]};
 export type FamilyRoute={key:string;origin:{x:number;y:number};parents:string[];children:{id:string;x:number;y:number}[]};
 export function layout(people:Person[]){
  const links=new Map(people.map(p=>[p.id,new Set([...p.parents,...p.partners])]));
@@ -192,7 +192,7 @@ function layoutComponent(people:Person[],offsetX=0){
  const minX=people.length?Math.min(...people.map(p=>xs.get(p.id)!-NODE_WIDTH/2)):0;
  const positions=new Map<string,{x:number;y:number}>();for(const p of people)positions.set(p.id,{x:offsetX+xs.get(p.id)!-minX+32-NODE_WIDTH/2,y:48+g.levels.get(g.groupOf(p.id))!*GENERATION_STEP});
  const width=Math.max(256,...[...positions.values()].map(p=>p.x-offsetX+NODE_WIDTH+32));
- const connections:TreeConnection[]=[],junctions:{id:string;x:number;y:number}[]=[],routes:FamilyRoute[]=[];
+ const connections:TreeConnection[]=[],junctions:{id:string;x:number;y:number;people:string[]}[]=[],routes:FamilyRoute[]=[];
  const unions=new Map<string,{x:number;y:number}>();
  const pairKey=(a:string,b:string)=>[a,b].sort().join('|');
  function connectPair(aId:string,bId:string,kind:'family'|'couple'){
@@ -203,8 +203,8 @@ function layoutComponent(people:Person[],offsetX=0){
   const row=[...positions.values()].filter(p=>p.y===a.y&&p.x>=a.x&&p.x<=b.x).sort((x,z)=>x.x-z.x);
   const target=(left+right)/2;const gaps=row.slice(0,-1).map((p,i)=>(p.x+NODE_WIDTH+row[i+1].x)/2);gaps.sort((x,z)=>Math.abs(x-target)-Math.abs(z-target));
   const anchor={x:gaps[0]??target,y};
-  connections.push({id:(kind==='couple'?'couple-':'coparents-')+key,kind,d:'M '+left+' '+y+' H '+right});
-  junctions.push({id:'union-'+key,...anchor});unions.set(key,anchor);return anchor;
+  connections.push({id:(kind==='couple'?'couple-':'coparents-')+key,kind,people:[aId,bId],d:'M '+left+' '+y+' H '+right});
+  junctions.push({id:'union-'+key,...anchor,people:[aId,bId]});unions.set(key,anchor);return anchor;
  }
  // Couples meet side-to-side, at the vertical centre of their cards.
  for(const p of people)for(const id of p.partners)connectPair(p.id,id,'couple');

@@ -3,37 +3,50 @@ import {useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type ReactNode} 
 import {Sprout,Plus,Download,Upload,Check,Maximize,X,Trash2,ChevronDown,LoaderCircle,Search,Focus,ArrowLeft,ArrowRight} from 'lucide-react';
 import {useTreeGestures} from '../hooks/use-tree-gestures';
 import {fitTreeZoom} from '../lib/tree-view';
-import {routeReferences} from '../lib/connection-crossings';
+import {routeLanes} from '../lib/lane-routing';
 import {familyLine} from '../lib/family-line';
 import {loadFamily,saveFamily,STORAGE_KEY} from '../lib/storage';
-import {ageRange,dateLabel,dateStart,isYear,initials,isUncertain,markedValue,layout,NODE_WIDTH,todayISO,validateFamily,assertHierarchy,isAncestor,searchRelatives,type Family,type Person,type UncertainField} from '../lib/family';
+import {ageRange,dateLabel,dateStart,isYear,initials,isUncertain,markedValue,layout,todayISO,validateFamily,assertHierarchy,isAncestor,searchRelatives,type Family,type Person,type UncertainField,type TreeConnection} from '../lib/family';
 const emptyFamily:Family={title:'Mi familia',people:[]};
 const blank=():Person=>({id:crypto.randomUUID(),name:'',surname:'',gender:'',birth:'',deceased:false,death:'',place:'',note:'',parents:[],partners:[]});
 const full=(p:Person)=>p.name.trim()||p.surname.trim()?`${markedValue(p,'name')} ${markedValue(p,'surname')}`:'Persona sin identificar';
 const shownDate=(p:Person,key:'birth'|'death')=>markedValue(p,key,dateLabel(p[key]));
 const ageText=(p:Person,compact=false)=>{const range=ageRange(p);if(!range)return '';const estimate=isUncertain(p,'birth')||p.deceased&&isUncertain(p,'death');return `${range.min===range.max?range.min:`${range.min}–${range.max}`} años${p.deceased?' al fallecer':''}${estimate?(compact?'?':' (estimación)'):''}`;};
 const nodeDates=(p:Person)=>p.deceased?`${shownDate(p,'birth')} — ${shownDate(p,'death')}`:[shownDate(p,'birth'),ageText(p,true)].filter(Boolean).join(' · ');
-const charts=new WeakMap<Person[],{graph:ReturnType<typeof layout>;drawing:ReturnType<typeof routeReferences>}>();
-function chartFor(people:Person[]){const cached=charts.get(people);if(cached)return cached;const graph=layout(people),value={graph,drawing:routeReferences(graph.connections,graph.routes)};charts.set(people,value);return value;}
+const charts=new WeakMap<Person[],{graph:ReturnType<typeof layout>;drawing:ReturnType<typeof routeLanes>}>();
+function chartFor(people:Person[]){const cached=charts.get(people);if(cached)return cached;const graph=layout(people),value={graph,drawing:routeLanes(graph)};charts.set(people,value);return value;}
 type Editor={person:Person;mode:string;relative?:string};
 export default function FamilyApp(){
  const [family,setFamily]=useState<Family>(emptyFamily),[ready,setReady]=useState(false),[revision,setRevision]=useState(0),[zoom,setZoom]=useState(1),[editor,setEditor]=useState<Editor|null>(null),[confirmation,setConfirmation]=useState<'delete'|'import'|null>(null),[pendingImport,setPendingImport]=useState<Family|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const [lineId,setLineId]=useState<string|null>(null),[searchOpen,setSearchOpen]=useState(false),[referenceChoice,setReferenceChoice]=useState<string|null>(null);
+ const [lineId,setLineId]=useState<string|null>(null),[searchOpen,setSearchOpen]=useState(false),[selectedId,setSelectedId]=useState<string|null>(null);
  const importer=useRef<HTMLInputElement>(null),viewport=useRef<HTMLDivElement>(null),previousFocus=useRef<HTMLElement|null>(null);
  const profileScroll=useRef<HTMLDivElement>(null),profileHeading=useRef<HTMLHeadingElement>(null);
  const returnToTree=useRef<{viewId:string|null;left:number;top:number;personId?:string}|null>(null);
  const focused=family.people.find(person=>person.id===lineId),viewId=focused?.id??null;
  const visiblePeople=useMemo(()=>viewId===null?family.people:familyLine(family.people,viewId),[family.people,viewId]);
- const {graph,drawing}=useMemo(()=>chartFor(visiblePeople),[visiblePeople]),crossingPrefix=useId(),referenceButtons=useRef(new Map<string,HTMLButtonElement>());
- const crossings=drawing.remaining;
- const choosing=drawing.references.find(route=>route.key===referenceChoice);
- const referenceMarks=drawing.references.flatMap(route=>[{id:route.label+'-parent',target:route.label+'-0',label:route.label,x:route.origin.x,y:route.origin.y+18,edgeY:route.origin.y,names:[route.children[0].id],choice:route.children.length>1?{key:route.key,count:route.children.length}:null},...route.children.map((child,i)=>({id:route.label+'-'+i,target:route.label+'-parent',label:route.label,x:child.x+NODE_WIDTH/2-14,y:child.y+13,edgeY:null,names:route.parents,choice:null}))]);
- function jumpReference(id:string){const target=referenceButtons.current.get(id);target?.scrollIntoView({block:'center',inline:'center',behavior:'instant'});target?.focus({preventScroll:true});}
+ const {graph,drawing}=useMemo(()=>chartFor(visiblePeople),[visiblePeople]),maskPrefix=useId();
+ const maskIds=useMemo(()=>new Map([...drawing.cuts.keys()].map((id,i)=>[id,`${maskPrefix}-${i}`])),[drawing,maskPrefix]);
+ const selected=visiblePeople.find(person=>person.id===selectedId);
+ const spotlight=useMemo(()=>{
+  if(!selected)return null;
+  const branch=familyLine(visiblePeople,selected.id),byId=new Map(branch.map(p=>[p.id,p]));
+  const routes=graph.routes.filter(route=>route.children.some(child=>route.parents.every(id=>byId.get(child.id)?.parents.includes(id))));
+  const keys=new Set(routes.map(route=>route.key));
+  const pairKeys=new Set<string>();const addPair=(a:string,b:string)=>pairKeys.add(JSON.stringify([a,b].sort()));
+  for(const person of branch)for(const partner of person.partners)addPair(person.id,partner);
+  for(const route of routes)route.parents.forEach((a,i)=>route.parents.slice(i+1).forEach(b=>addPair(a,b)));
+  return {keys,pairKeys};
+ },[selected,visiblePeople,graph.routes]);
+ function branchClass(line:Pick<TreeConnection,'familyKey'|'people'>){
+  if(!spotlight)return '';
+  const related=line.familyKey?spotlight.keys.has(line.familyKey):!!line.people&&spotlight.pairKeys.has(JSON.stringify([...line.people].sort()));
+  return related?' branch-active':' branch-muted';
+ }
  const fittedLine=useRef<string|null|undefined>(undefined);
  const [fitRequest,setFitRequest]=useState(0),lastFitRequest=useRef(0);
  function fitTree(){const el=viewport.current;if(!el)return;const inner=el.querySelector<HTMLElement>('.canvas-inner');if(!inner)return;const style=getComputedStyle(inner);const horizontal=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight),vertical=parseFloat(style.paddingTop)+parseFloat(style.paddingBottom);setZoom(fitTreeZoom(graph.width,graph.height,el.clientWidth-horizontal-2,el.clientHeight-vertical-2));setFitRequest(n=>n+1);}
  useLayoutEffect(()=>{if(fitRequest===lastFitRequest.current)return;lastFitRequest.current=fitRequest;const el=viewport.current;if(el)el.scrollTo({left:Math.max(0,(el.scrollWidth-el.clientWidth)/2),top:Math.max(0,(el.scrollHeight-el.clientHeight)/2),behavior:'instant'});},[zoom,fitRequest]);
- const profileOpen=!!editor,dialogOpen=!!confirmation||searchOpen||!!choosing;
+ const profileOpen=!!editor,dialogOpen=!!confirmation||searchOpen;
  const treeBlocked=profileOpen||dialogOpen;
  const gestures=useTreeGestures(viewport,zoom,setZoom,ready&&family.people.length>0&&!treeBlocked);
  function applyStored(saved:ReturnType<typeof loadFamily>){const next=saved?.tree??emptyFamily;setFamily(current=>JSON.stringify(current)===JSON.stringify(next)?current:next);setRevision(saved?.revision??0);}
@@ -43,7 +56,8 @@ export default function FamilyApp(){
  useLayoutEffect(()=>{if(profileOpen||!viewport.current)return;const saved=returnToTree.current;returnToTree.current=null;if(!saved||saved.viewId!==viewId)return;const canvas=viewport.current;canvas.scrollTo({left:saved.left,top:saved.top,behavior:'instant'});const card=[...canvas.querySelectorAll<HTMLButtonElement>('[data-person-id]')].find(node=>node.dataset.personId===saved.personId);card?.focus({preventScroll:true});},[profileOpen,viewId]);
  useLayoutEffect(()=>{if(!editor?.person.id)return;profileScroll.current?.scrollTo({top:0,behavior:'instant'});profileHeading.current?.focus({preventScroll:true});},[editor?.person.id]);
  useEffect(()=>{if(!profileOpen||dialogOpen)return;const escape=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!busy){setEditor(null);setError('');}};document.addEventListener('keydown',escape);return()=>document.removeEventListener('keydown',escape);},[profileOpen,dialogOpen,busy]);
- useEffect(()=>{if(!dialogOpen)return;previousFocus.current=document.activeElement as HTMLElement;const el=document.querySelector<HTMLElement>('[role="dialog"]');(el?.querySelector<HTMLElement>('[data-initial-focus]')??el?.querySelector<HTMLElement>('input,button'))?.focus();const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!busy){setEditor(null);setConfirmation(null);setSearchOpen(false);setReferenceChoice(null);setError('');}if(e.key==='Tab'){const all=Array.from(el?.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href]')??[]).filter(x=>!x.hasAttribute('disabled')&&x.offsetParent!==null);const first=all[0],last=all[all.length-1];if(e.shiftKey&&document.activeElement===first){last?.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first?.focus();e.preventDefault();}}};document.addEventListener('keydown',onKey);return()=>{document.removeEventListener('keydown',onKey);previousFocus.current?.focus({preventScroll:true});};},[dialogOpen,busy,confirmation,editor?.person.id,searchOpen,choosing?.key]);
+ useEffect(()=>{if(!dialogOpen)return;previousFocus.current=document.activeElement as HTMLElement;const el=document.querySelector<HTMLElement>('[role="dialog"]');(el?.querySelector<HTMLElement>('[data-initial-focus]')??el?.querySelector<HTMLElement>('input,button'))?.focus();const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'&&!busy){setEditor(null);setConfirmation(null);setSearchOpen(false);setError('');}if(e.key==='Tab'){const all=Array.from(el?.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href]')??[]).filter(x=>!x.hasAttribute('disabled')&&x.offsetParent!==null);const first=all[0],last=all[all.length-1];if(e.shiftKey&&document.activeElement===first){last?.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first?.focus();e.preventDefault();}}};document.addEventListener('keydown',onKey);return()=>{document.removeEventListener('keydown',onKey);previousFocus.current?.focus({preventScroll:true});};},[dialogOpen,busy,confirmation,editor?.person.id,searchOpen]);
+ useEffect(()=>{if(treeBlocked||!selected)return;const clear=(event:KeyboardEvent)=>{if(event.key==='Escape')setSelectedId(null);};document.addEventListener('keydown',clear);return()=>document.removeEventListener('keydown',clear);},[treeBlocked,selected]);
  async function persist(next:Family){validateFamily(next);assertHierarchy(next.people);if(!ready)throw new Error('El almacenamiento del navegador no está disponible.');setBusy(true);setError('');try{const save=()=>saveFamily(localStorage,next,revision);const result=navigator.locks?await navigator.locks.request('raices-save',save):save();setFamily(result.tree);setRevision(result.revision);}finally{setBusy(false);}}
  function attempt(next:Family,after:()=>void){persist(next).then(after).catch(e=>setError(e instanceof Error?e.message:'No se pudo guardar.'));}
  function openProfile(next:Editor){const canvas=viewport.current;if(canvas)returnToTree.current={viewId,left:canvas.scrollLeft,top:canvas.scrollTop,personId:next.mode==='edit'?next.person.id:undefined};setError('');setEditor(next);}
@@ -52,7 +66,8 @@ export default function FamilyApp(){
  function download(){const url=URL.createObjectURL(new Blob([JSON.stringify({format:'raices-v1',tree:family},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='raices-'+todayISO()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  async function importFile(file?:File){if(!file)return;try{if(file.size>2000000)throw new Error('La copia es demasiado grande (máximo 2 MB).');const data=JSON.parse(await file.text());validateFamily(data.tree);setPendingImport(data.tree);setError('');setConfirmation('import');}catch(e){setError(e instanceof Error?e.message:'No se pudo abrir la copia.');}if(importer.current)importer.current.value='';}
  function removePerson(){if(!editor)return;const id=editor.person.id;attempt({...family,people:family.people.filter(p=>p.id!==id).map(p=>({...p,parents:p.parents.filter(x=>x!==id),partners:p.partners.filter(x=>x!==id)}))},()=>{if(lineId===id)setLineId(null);setConfirmation(null);setEditor(null);});}
- function showLine(id:string){setLineId(id);setSearchOpen(false);setEditor(null);setError('');}
+ function showLine(id:string){setLineId(id);setSelectedId(null);setSearchOpen(false);setEditor(null);setError('');}
+ function tapPerson(id:string){if(id!==selectedId){setSelectedId(id);return;}const person=family.people.find(p=>p.id===id);if(person)openProfile({person:{...person},mode:'edit'});}
  const close=()=>{if(busy)return;setEditor(null);setConfirmation(null);setError('');};
  return <div className="tree-app">
   {!editor&&<>
@@ -62,22 +77,20 @@ export default function FamilyApp(){
    <input hidden ref={importer} type="file" accept=".json,application/json" onChange={e=>importFile(e.target.files?.[0])}/>
   </header>
   <main className={'tree-workspace'+(focused?' has-line':'')} aria-label="Árbol genealógico">
-   {focused&&<div className="line-bar"><div className="line-title" role="status"><span>Línea de</span><strong>{full(focused)}</strong></div><button className="line-back" onClick={()=>setLineId(null)}><ArrowLeft size={15}/>Árbol completo</button></div>}
+   {focused&&<div className="line-bar"><div className="line-title" role="status"><span>Línea de</span><strong>{full(focused)}</strong></div><button className="line-back" onClick={()=>{setLineId(null);setSelectedId(null);}}><ArrowLeft size={15}/>Árbol completo</button></div>}
    {error&&!dialogOpen&&<div className="error-toast" role="alert"><span>{error}</span><button aria-label="Cerrar aviso" onClick={()=>setError('')}><X size={16}/></button></div>}
-   <div ref={viewport} className="tree-canvas" {...gestures}>
+   <div ref={viewport} className="tree-canvas" {...gestures} onClick={event=>{if(!(event.target as Element).closest('button'))setSelectedId(null);}}>
     {!ready?<div className="empty-state"><LoaderCircle size={22} className="spin" aria-label="Cargando árbol"/></div>:family.people.length===0?<div className="empty-state"><Sprout size={42} strokeWidth={1.2}/><h1>Tu árbol empieza aquí.</h1><button className="primary" onClick={()=>add()}><Plus size={16}/>Añadir primera persona</button></div>:<div className="canvas-inner"><div className="graph-space" style={{width:graph.width*zoom,height:graph.height*zoom}}><div className="graph" style={{width:graph.width,height:graph.height,transform:`scale(${zoom})`}}>
      <svg width={graph.width} height={graph.height} className="connections" aria-hidden="true">
-      {crossings.length>0&&<defs>{crossings.map(({point},i)=><clipPath key={i} id={`${crossingPrefix}-${i}`}><circle cx={point.x} cy={point.y} r={8}/></clipPath>)}</defs>}
-      {drawing.connections.map(connection=><path key={connection.id} data-connection={connection.kind} className={connection.kind==='couple'?'couple-brace':'family-brace'} d={connection.d}/>)}
-      {referenceMarks.filter(mark=>mark.edgeY!==null).map(mark=><path key={mark.id} className="reference-stem" d={`M ${mark.x} ${mark.edgeY} V ${mark.y}`}/>)}
-      {crossings.map(({over},i)=><g key={i} clipPath={`url(#${crossingPrefix}-${i})`} className="line-overpass"><path className="crossing-halo" d={over.d}/><path className={over.kind==='couple'?'couple-brace':'family-brace'} d={over.d}/></g>)}
-      {graph.junctions.map(junction=><circle key={junction.id} className="family-junction" cx={junction.x} cy={junction.y} r={2.5}/>)}</svg>
-     {referenceMarks.map(mark=>{const names=mark.names.map(id=>family.people.find(p=>p.id===id)).filter(p=>p!==undefined).map(full).join(', '),label=mark.choice?`Referencia ${mark.label}: elegir entre ${mark.choice.count} hijos`:`Referencia ${mark.label}: ir a ${names}`;return <button key={mark.id} ref={node=>{if(node)referenceButtons.current.set(mark.id,node);else referenceButtons.current.delete(mark.id);}} className="branch-reference" style={{left:mark.x,top:mark.y}} aria-label={label} title={label} aria-haspopup={mark.choice?'dialog':undefined} onClick={()=>mark.choice?setReferenceChoice(mark.choice.key):jumpReference(mark.target)}>{mark.label}</button>;})}
-     {visiblePeople.map(p=>{const pos=graph.positions.get(p.id)!,selected=p.id===viewId;return <button key={p.id} data-person-id={p.id} className={'person-node '+(p.gender==='Mujer'?'female':p.gender==='Hombre'?'male':'unspecified')+(selected?' line-person':'')} title={markedValue(p,'gender')} aria-current={selected?'true':undefined} style={{left:pos.x,top:pos.y}} onClick={()=>openProfile({person:{...family.people.find(person=>person.id===p.id)!},mode:'edit'})} aria-label={`Editar a ${full(p)}${isUncertain(p,'gender')?', género dudoso':''}`}><span className={'avatar '+(p.gender==='Hombre'?'blue':p.gender==='Mujer'?'pink':'neutral')}>{initials(p)}{isUncertain(p,'gender')&&<span className="gender-doubt" aria-hidden="true">?</span>}{p.deceased&&<span className="deceased-mark" aria-label="Fallecido/a">✧</span>}</span><span className="node-name">{markedValue(p,'name')}</span><span className="node-surname">{markedValue(p,'surname')}</span><span className="node-dates">{nodeDates(p)}</span></button>;})}
+      {drawing.cuts.size>0&&<defs>{[...drawing.cuts].map(([id,cuts])=><mask key={id} id={maskIds.get(id)} maskUnits="userSpaceOnUse" x={0} y={0} width={graph.width} height={graph.height}><rect width={graph.width} height={graph.height} fill="white"/>{cuts.map((area,i)=><rect key={i} {...area} fill="black"/>)}</mask>)}</defs>}
+      {drawing.lines.map(line=><path key={line.id} data-connection={line.kind} className={(line.kind==='couple'?'couple-brace':'family-brace')+branchClass(line)} d={line.d} mask={maskIds.has(line.id)?`url(#${maskIds.get(line.id)})`:undefined}/>)}
+      {drawing.bridges.map(bridge=><path key={bridge.id} className={'line-bridge'+(bridge.over.kind==='couple'?' couple-brace':'')+branchClass(bridge.over)} d={bridge.d}/>)}
+      {graph.junctions.map(junction=><circle key={junction.id} className={'family-junction'+branchClass(junction)} cx={junction.x} cy={junction.y} r={2.5}/>)}</svg>
+     {visiblePeople.map(p=>{const pos=graph.positions.get(p.id)!,picked=p.id===selected?.id;return <button key={p.id} data-person-id={p.id} className={'person-node '+(p.gender==='Mujer'?'female':p.gender==='Hombre'?'male':'unspecified')+(picked||!selected&&p.id===viewId?' line-person':'')} title={markedValue(p,'gender')} aria-current={picked||p.id===viewId?'true':undefined} style={{left:pos.x,top:pos.y}} onClick={()=>tapPerson(p.id)} aria-label={`${picked?'Editar a':'Resaltar la línea de'} ${full(p)}${isUncertain(p,'gender')?', género dudoso':''}`}><span className={'avatar '+(p.gender==='Hombre'?'blue':p.gender==='Mujer'?'pink':'neutral')}>{initials(p)}{isUncertain(p,'gender')&&<span className="gender-doubt" aria-hidden="true">?</span>}{p.deceased&&<span className="deceased-mark" aria-label="Fallecido/a">✧</span>}</span><span className="node-name">{markedValue(p,'name')}</span><span className="node-surname">{markedValue(p,'surname')}</span><span className="node-dates">{nodeDates(p)}</span></button>;})}
     </div></div></div>}
    </div>
    {family.people.length>0&&<><div className="tree-tools"><button className="fit-tree" aria-label={focused?'Encuadrar línea familiar':'Ver árbol completo'} title={focused?'Encuadrar línea familiar':'Ver árbol completo'} onClick={fitTree}><Maximize size={17}/></button><button className="fit-tree" aria-label="Buscar persona" title="Buscar persona" onClick={()=>setSearchOpen(true)}><Search size={17}/></button></div><button className="add-person" aria-label="Añadir persona" title="Añadir persona" onClick={()=>add()} disabled={!ready||busy}><Plus size={23}/></button></>}
-   {drawing.references.length>0&&<p className="reference-hint">Las letras iguales enlazan a progenitores e hijos.</p>}
+   {selected&&<p className="branch-hint" role="status">Línea resaltada. Toca otra vez la ficha para editar.</p>}
   </main>
   </>}
   {editor&&<main className="profile-screen" aria-labelledby="profile-title" inert={!!confirmation}>
@@ -90,7 +103,6 @@ export default function FamilyApp(){
    </div></div>
   </main>}
   {searchOpen&&<LinePicker people={family.people} onClose={()=>setSearchOpen(false)} onSelect={showLine}/>}
-  {choosing&&<ReferencePicker label={choosing.label} parents={choosing.parents.map(id=>family.people.find(p=>p.id===id)!).map(full).join(' y ')} children={choosing.children.map(child=>family.people.find(p=>p.id===child.id)!)} onClose={()=>setReferenceChoice(null)} onSelect={index=>{previousFocus.current=null;setReferenceChoice(null);jumpReference(choosing.label+'-'+index);}}/>}
   {confirmation&&<div className="modal-backdrop"><section className="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirmation-title"><h2 id="confirmation-title">{confirmation==='delete'?'¿Eliminar a este familiar?':'¿Importar esta copia?'}</h2><p>{confirmation==='delete'?`Se eliminará la ficha de ${editor?full(editor.person):''} y sus vínculos. Los demás familiares se conservarán.`:'Esta copia sustituirá el árbol de este navegador. Puedes descargar una copia del actual antes de continuar.'}</p>{error&&<p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="outline" disabled={busy} onClick={()=>{setConfirmation(null);setError('');}}>Cancelar</button>{confirmation==='import'&&<button className="outline" onClick={download}>Descargar actual</button>}<button className="primary" disabled={busy} onClick={()=>confirmation==='delete'?removePerson():pendingImport&&attempt(pendingImport,()=>{setLineId(null);setConfirmation(null);})}>{busy?<LoaderCircle size={16} className="spin"/>:confirmation==='delete'?'Eliminar persona':'Importar y guardar'}</button></div></section></div>}
  </div>;
 }
@@ -102,9 +114,6 @@ function LinePicker({people,onClose,onSelect}:{people:Person[];onClose:()=>void;
  const [query,setQuery]=useState(''),{matches,total}=useMemo(()=>searchRelatives(people,query),[people,query]);
  return <div className="modal-backdrop"><section className="modal chart-picker" role="dialog" aria-modal="true" aria-labelledby="line-picker-title"><div className="modal-header"><h2 id="line-picker-title">Buscar persona</h2><button className="icon-button" aria-label="Cerrar búsqueda" onClick={onClose}><X size={20}/></button></div><div className="chart-picker-body"><p>Elige a alguien para ver su línea familiar.</p><label className="relative-search-input"><Search size={17}/><input data-initial-focus type="search" aria-label="Nombre o apellidos" placeholder="Nombre o apellidos…" value={query} onChange={e=>setQuery(e.target.value)} autoComplete="off"/></label>
  {query.trim().length<2?<p className="search-hint">Escribe al menos 2 caracteres.</p>:!matches.length?<p className="search-hint" role="status">No hay coincidencias.</p>:<div className="relative-results" aria-label="Resultados de personas">{matches.map(person=><PersonChoice key={person.id} person={person} label={`Ver línea de ${full(person)}`} onClick={()=>onSelect(person.id)}/>)}{total>matches.length&&<p className="search-hint" role="status">Mostrando {matches.length} de {total}. Escribe más para afinar la búsqueda.</p>}</div>}</div></section></div>;
-}
-function ReferencePicker({label,parents,children,onClose,onSelect}:{label:string;parents:string;children:Person[];onClose:()=>void;onSelect:(index:number)=>void}){
- return <div className="modal-backdrop"><section className="modal chart-picker" role="dialog" aria-modal="true" aria-labelledby="reference-picker-title"><div className="modal-header"><h2 id="reference-picker-title">Hijos vinculados · {label}</h2><button className="icon-button" aria-label="Cerrar lista de hijos" onClick={onClose}><X size={20}/></button></div><div className="chart-picker-body"><p>Hijos de {parents}. Elige una ficha para ir a ella.</p><div className="relative-results" aria-label="Hijos vinculados">{children.map((person,index)=><PersonChoice key={person.id} person={person} label={`Ir a ${full(person)}`} onClick={()=>onSelect(index)}/>)}</div></div></section></div>;
 }
 function DoubtButton({label,active,onClick}:{label:string;active:boolean;onClick:()=>void}){
  return <button type="button" className="doubt-button" aria-label={`Duda sobre ${label}`} aria-pressed={active} title={active?'Quitar marca de duda':'Marcar como dudoso'} onClick={onClick}>?</button>;
