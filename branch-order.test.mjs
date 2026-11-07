@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {layout,COLUMN_STEP,NODE_WIDTH} from './lib/family.ts';
+import {orderFamilyRows} from './lib/branch-order.ts';
 
 function points(path){
  const n=path.match(/-?(?:\d*\.)?\d+(?:e[+-]?\d+)?/gi).map(Number);
@@ -30,8 +31,7 @@ const people=[p('abuela','Mujer',['mayor-a','mayor-b'],['abuelo']),p('abuelo','H
 const graph=layout(people);
 assert.deepEqual(crossingPairs(graph),[],'A union between two ancestral branches must not cross adjacent families');
 for(const woman of people.filter(person=>person.gender==='Mujer'))for(const id of woman.partners){
- assert.ok(graph.positions.get(id).x<graph.positions.get(woman.id).x,'Men must be on the left in each mixed-gender couple');
- assert.ok(graph.positions.get(woman.id).x-graph.positions.get(id).x<=COLUMN_STEP*2+.1,'Couples should stay close');
+ assert.ok(Math.abs(graph.positions.get(woman.id).x-graph.positions.get(id).x)<=COLUMN_STEP*2+.1,'Couples should stay close in either order');
 }
 assert.ok(graph.centeringError<.1);
 
@@ -64,4 +64,12 @@ deeper.push(p('old-father','Hombre',[],['old-mother']),p('old-mother','Mujer',[]
 const deepGraph=layout(deeper);
 assert.deepEqual(crossingPairs(deepGraph),[],'Adding earlier ancestors must not interleave existing sibling branches');
 assert.equal(deepGraph.positions.size,deeper.length);
-console.log('Árbol completo: ramas independientes separadas, uniones sucesivas sin cruces, parejas juntas y en orden.');
+const swapped=deeper.map(person=>({...person,gender:person.gender==='Mujer'?'Hombre':'Mujer'}));
+assert.deepEqual(layout(swapped).positions,deepGraph.positions,'Gender must not determine the placement of a card');
+
+const rows=[{level:0,ids:['left','right']},{level:1,ids:['man','woman']}];
+const branch=(parent,child)=>({parents:[parent],children:[child]});
+orderFamilyRows(rows,[branch('left','woman'),branch('right','man')],id=>['man','woman'].includes(id)?'couple':id);
+assert.deepEqual(rows[0].ids,['left','right']);
+assert.deepEqual(rows[1].ids,['woman','man'],'The couple must reverse when that prevents an ancestry crossing');
+console.log('Árbol completo: ramas separadas, uniones sin cruces y parejas juntas en cualquiera de los dos órdenes.');

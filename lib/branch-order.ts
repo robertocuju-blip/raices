@@ -11,7 +11,9 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
   for(const id of row.ids){levels.set(id,row.level);const previous=blocks.at(-1);if(previous&&groupOf(previous[0])===groupOf(id))previous.push(id);else blocks.push([id]);}
   return blocks;
  });
- function rank(blocks:string[][]){let index=0;blocks.forEach((block,i)=>block.forEach(id=>{ranks.set(id,index++);groupRanks.set(id,i);}));}
+ const reversed=new Set<string[]>();
+ function orient(block:string[],reverse:boolean){if(reverse)reversed.add(block);else reversed.delete(block);}
+ function rank(blocks:string[][]){let index=0;blocks.forEach((block,i)=>{for(let j=0;j<block.length;j++){const id=block[reversed.has(block)?block.length-1-j:j];ranks.set(id,index++);groupRanks.set(id,i);}});}
  groups.forEach(rank);
  const bands=new Map<string,{above:number;below:number;branches:Branch[]}>();
  for(const branch of branches){
@@ -46,25 +48,29 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
   let changed=false;
   for(let step=0;step<rows.length;step++){
    const i=sweep%2?step:rows.length-1-step,blocks=groups[i],bands=touched[i];
-   let current=score(bands);if(!current||blocks.length<2)continue;
+   let current=score(bands);if(!current)continue;
    for(const block of [...blocks]){
-    const from=blocks.indexOf(block);let best=from,bestScore=current;
+    const from=blocks.indexOf(block),wasReversed=reversed.has(block);let best=from,bestScore=current,bestReversed=wasReversed;
     blocks.splice(from,1);
     const radius=blocks.length<=40?blocks.length:3;
-    for(let to=Math.max(0,from-radius);to<=Math.min(blocks.length,from+radius);to++){
-     if(to===from)continue;
-     blocks.splice(to,0,block);rank(blocks);const candidate=score(bands);blocks.splice(to,1);
-     if(candidate<bestScore){best=to;bestScore=candidate;}
+    // Reverse the entire couple block so the partners remain adjacent.
+    for(const reverse of block.length>1?[wasReversed,!wasReversed]:[wasReversed]){
+     orient(block,reverse);
+     for(let to=Math.max(0,from-radius);to<=Math.min(blocks.length,from+radius);to++){
+      if(to===from&&reverse===wasReversed)continue;
+      blocks.splice(to,0,block);rank(blocks);const candidate=score(bands);blocks.splice(to,1);
+      if(candidate<bestScore){best=to;bestScore=candidate;bestReversed=reverse;}
+     }
     }
-    blocks.splice(best,0,block);rank(blocks);
-    if(best!==from){changed=true;current=bestScore;if(!current)break;}
+    blocks.splice(best,0,block);orient(block,bestReversed);rank(blocks);
+    if(bestScore<current){changed=true;current=bestScore;if(!current)break;}
    }
   }
   if(!changed)break;
  }}
  const allBands=[...bands.values()],initial=groups.map(blocks=>[...blocks]);
  improve();
- let best=groups.map(blocks=>[...blocks]),bestScore=score(allBands);
+ let best=groups.map(blocks=>[...blocks]),bestScore=score(allBands),bestReversed=new Set(reversed);
  // A marriage between two branches may require several rows to move at
  // once. Try placing its ancestral groups beside each other, in the same
  // order as the couple, then propagate that order to the rows below.
@@ -92,19 +98,21 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
   const first=branchOf.get(block[0]),last=branchOf.get(block.at(-1)!);
   if(!first||!last||first===last)return [];
   const sides=ancestralSides(blocksById.get(first.parents[0])!,blocksById.get(last.parents[0])!);
-  return sides.length?[sides]:[];
+  return sides.length?[{block,sides}]:[];
  });
  const searchBudget=rows.reduce((size,row)=>size+row.ids.length,0)>300?12:36;
  for(let sweep=0,attempts=0;sweep<3&&attempts<searchBudget&&bestScore>=CROSSING_WEIGHT;sweep++){
   const before=bestScore;
-  for(const sides of bridges){
+  for(const {block,sides:originalSides} of bridges){
    if(attempts>=searchBudget||bestScore<CROSSING_WEIGHT)break;
    // Start from the best order so later unions keep the earlier improvements.
-   const start=best;
-   for(const depth of new Set([sides.length-1,Math.min(1,sides.length-1),0])){
+   const start=best,startReversed=bestReversed,wasReversed=startReversed.has(block);
+   for(const reverse of [wasReversed,!wasReversed])for(const depth of new Set([originalSides.length-1,Math.min(1,originalSides.length-1),0])){
     if(attempts++>=searchBudget||bestScore<CROSSING_WEIGHT)break;
+    const sides=reverse?originalSides.map(({left,right,above})=>({left:right,right:left,above})):originalSides;
     const {left,right,above}=sides[depth],facing=new Map(sides.slice(0,depth).map(side=>[side.above,side]));
     for(const moveLeft of [true,false]){
+     reversed.clear();for(const item of startReversed)reversed.add(item);orient(block,reverse);
      start.forEach((blocks,j)=>{groups[j]=[...blocks];rank(groups[j]);});
      const upper=groups[above];
      if(moveLeft){upper.splice(upper.indexOf(left),1);upper.splice(upper.indexOf(right),0,left);}
@@ -119,12 +127,12 @@ export function orderFamilyRows(rows:Row[],branches:Branch[],groupOf:(id:string)
       groups[j].sort((a,b)=>preference(a)-preference(b)||edge(a)-edge(b));rank(groups[j]);
      }
      improve();const candidate=score(allBands);
-     if(candidate<bestScore){best=groups.map(blocks=>[...blocks]);bestScore=candidate;}
+     if(candidate<bestScore){best=groups.map(blocks=>[...blocks]);bestScore=candidate;bestReversed=new Set(reversed);}
      if(bestScore<CROSSING_WEIGHT)break;
     }
    }
   }
   if(bestScore===before)break;
  }
- best.forEach((blocks,i)=>{rows[i].ids=blocks.flat();});
+ best.forEach((blocks,i)=>{rows[i].ids=blocks.flatMap(block=>bestReversed.has(block)?[...block].reverse():block);});
 }

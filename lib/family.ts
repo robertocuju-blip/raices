@@ -126,10 +126,6 @@ function layoutComponent(people:Person[],offsetX=0){
  }
  const families=new Map<string,{parents:string[];children:string[]}>();
  for(const p of people){if(!p.parents.length)continue;const parents=[...p.parents].sort();const key=parents.join('|')+'@'+g.levels.get(g.groupOf(p.id));const f=families.get(key)??{parents,children:[]};f.children.push(p.id);families.set(key,f);}
- for(const row of rows)for(let i=1;i<row.ids.length;i++){
-  const left=byId.get(row.ids[i-1])!,right=byId.get(row.ids[i])!,group=g.groupOf(left.id);
-  if(group===g.groupOf(right.id)&&g.members.get(group)!.length===2&&left.gender==='Mujer'&&right.gender==='Hombre')[row.ids[i-1],row.ids[i]]=[right.id,left.id];
- }
  if(!g.hierarchyError)orderFamilyRows(rows,[...families.values()],g.groupOf);
  for(const row of rows)row.ids.forEach((id,i)=>xs.set(id,(i-(row.ids.length-1)/2)*COLUMN_STEP));
  // Ordered rows keep sibling families together without rectangular subtree padding.
