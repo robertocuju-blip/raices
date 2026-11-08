@@ -147,9 +147,11 @@ function layoutComponent(people:Person[],offsetX=0){
  if(!g.hierarchyError)orderFamilyRows(rows,[...families.values()],g.groupOf);
  for(const row of rows)row.ids.forEach((id,i)=>xs.set(id,(i-(row.ids.length-1)/2)*COLUMN_STEP));
  // The order of each row determines which cards define a family's centre.
+ const siblingSpans:[string,string][]=[];
  const centres=[...families.values()].map(f=>{
   const parents=[...f.parents].sort((a,b)=>xs.get(a)!-xs.get(b)!);
   const children=[...f.children].sort((a,b)=>xs.get(a)!-xs.get(b)!);
+  if(children.length>1)siblingSpans.push([children[0],children.at(-1)!]);
   const coefficients=new Map<string,number>();
   for(const [id,weight] of [[parents[0],.5],[parents.at(-1)!,.5],[children[0],-.5],[children.at(-1)!,-.5]] as [string,number][]){
    coefficients.set(id,(coefficients.get(id)??0)+weight);
@@ -163,7 +165,7 @@ function layoutComponent(people:Person[],offsetX=0){
   return [{left,right,limit}];
  }));
  if(people.length&&!g.hierarchyError){
-  const compact=compactLayout(rows.map(row=>row.ids),centres,couples,COLUMN_STEP);
+  const compact=compactLayout(rows.map(row=>row.ids),centres,couples,COLUMN_STEP,siblingSpans);
   if(compact)for(const [id,x] of compact)xs.set(id,x);
  }
  const centeringError=centres.reduce((max,terms)=>Math.max(max,Math.abs(terms.reduce((sum,[id,weight])=>sum+xs.get(id)!*weight,0))),0);

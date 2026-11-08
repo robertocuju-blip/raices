@@ -4,7 +4,7 @@ type Term = [id: string, coefficient: number];
 type Couple = { left: string; right: string; limit: number };
 
 // Optimize horizontal positions for a fixed row order. Units are card pitches.
-export function compactLayout(rows: string[][], centres: Term[][], couples: Couple[], step: number) {
+export function compactLayout(rows: string[][], centres: Term[][], couples: Couple[], step: number, siblings: [string, string][] = []) {
   const variables: Model['variables'] = { width: {}, gap: {}, drift: {}, coupleOverage: {} };
   const constraints: Model['constraints'] = {};
   const position = new Map(rows.flat().map((id, i) => [id, 'x' + i]));
@@ -31,11 +31,12 @@ export function compactLayout(rows: string[][], centres: Term[][], couples: Coup
     }
   }
 
-  for (const centre of centres) {
+  function boundDrift(centre: Term[], limit: string) {
     const terms: Term[] = centre.map(([id, coefficient]) => [position.get(id)!, coefficient]);
-    constrain({max: 0}, [...terms, ['drift', -1]]);
-    constrain({max: 0}, [...terms.map(([key, coefficient]): Term => [key, -coefficient]), ['drift', -1]]);
+    constrain({max: 0}, [...terms, [limit, -1]]);
+    constrain({max: 0}, [...terms.map(([key, coefficient]): Term => [key, -coefficient]), [limit, -1]]);
   }
+  for (const centre of centres) boundDrift(centre, 'drift');
   for (const {left, right, limit} of couples) {
     constrain({max: limit / step}, [[position.get(right)!, 1], [position.get(left)!, -1], ['coupleOverage', -1]]);
   }
@@ -63,18 +64,44 @@ export function compactLayout(rows: string[][], centres: Term[][], couples: Coup
       const closest = solve('minimumDrift');
       if (!closest) return null;
       constraints.driftLimit = {max: closest.result + 1e-7};
+      // A conflict in one family need not shift unrelated families sideways.
+      // Minimize total drift at the optimal maximum before compacting.
+      const deviations: Term[] = centres.map((centre, index) => {
+        const name = 'drift' + index;
+        variables[name] = {totalDrift: 1};
+        boundDrift(centre, name);
+        return [name, 1];
+      });
+      const leastTotalDrift = solve('totalDrift');
+      if (leastTotalDrift) constrain({max: leastTotalDrift.result + 1e-7}, deviations);
       bounds = solve('minimumCoupleOverage');
       if (!bounds) return null;
     }
     constraints.coupleLimit = {max: bounds.result + 1e-7};
   }
 
-  // Penalize the largest gap and excess space throughout the chart, as well
-  // as its total width. Ordinary gaps of up to two pitches incur no excess.
-  variables.width.cost = 1;
-  variables.gap.cost = 1;
+  // Find the narrowest chart at the chosen centring and couple bounds.
+  variables.width.minimumWidth = 1;
+  const narrowest = solve('minimumWidth');
+  if (!narrowest) return null;
+  variables.width.widthLimit = 1;
+  constraints.widthLimit = {max: narrowest.result + 1e-7};
+
+  // Keep the largest gap as small as possible before packing sibling groups.
+  variables.gap.minimumGap = 1;
+  const smallestGap = solve('minimumGap');
+  if (smallestGap) {
+    variables.gap.gapLimit = 1;
+    constraints.gapLimit = {max: smallestGap.result + 1e-7};
+  }
+
   for (const name of gapVariables) variables[name].cost = 1 / Math.max(1, gapVariables.length);
-  const best = solve();
-  if (!best) return null;
+  for (const [first, last] of siblings) {
+    const left = variables[position.get(first)!];
+    const right = variables[position.get(last)!];
+    left.cost = (left.cost ?? 0) - 1;
+    right.cost = (right.cost ?? 0) + 1;
+  }
+  const best = solve() ?? smallestGap ?? narrowest;
   return new Map([...position].map(([id, key]) => [id, Number(best[key] ?? 0) * step]));
 }

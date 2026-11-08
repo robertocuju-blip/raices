@@ -16,10 +16,23 @@ assert.ok(Math.abs(distance(compact, 'left', children[0])) < .001);
 assert.ok(Math.abs(distance(compact, 'right', children.at(-1))) < .001);
 assert.deepEqual(compactLayout(rows, centres, [], step), compact);
 
+// The outer branches force the width and the biggest gap. Spend the remaining
+// slack between families so the two middle siblings can stay adjacent.
+const dense = Array.from({length: 7}, (_, index) => 'dense-' + index);
+const siblingRows = [['x', 'b', 'c', 'y'], ['u', 'v'], dense];
+const anchored = [
+  link('x', dense[0]), link('y', dense.at(-1)),
+  link('u', dense[0]), link('v', dense.at(-1)),
+];
+const siblingLayout = compactLayout(siblingRows, anchored, [], step, [['b', 'c']]);
+assert.ok(Math.abs(distance(siblingLayout, 'b', 'c') - step) < .001);
+assert.ok(Math.abs(distance(siblingLayout, 'x', 'y') - 6 * step) < .001);
+
 // Reversed parent/child order makes exact alignment impossible. Use the
 // minimum feasible deviation and keep the cards one pitch apart.
-const reversedRows = [['a', 'b'], ['c', 'd']];
-const reversed = compactLayout(reversedRows, [link('a', 'd'), link('b', 'c')], [], step);
+const reversedRows = [['a', 'b', 'e'], ['c', 'd', 'f']];
+const reversed = compactLayout(reversedRows, [link('a', 'd'), link('b', 'c'), link('e', 'f')], [], step);
 assert.ok(Math.abs(Math.abs(distance(reversed, 'a', 'd')) - step) < .001);
 assert.ok(Math.abs(distance(reversed, 'c', 'd') - step) < .001);
+assert.ok(Math.abs(distance(reversed, 'e', 'f')) < .001);
 console.log('Compactación determinista y límites comprobados con alineación posible e incompatible.');
