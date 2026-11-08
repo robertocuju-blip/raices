@@ -216,7 +216,10 @@ function layoutComponent(people:Person[],offsetX=0){
   // column only if the tighter layout reduces the gap cost substantially.
   for(const tolerance of [0,COLUMN_STEP/2]){
    const limits=allConstraints.map(c=>c.upper?c:{...c,tolerance});
-   const error=solve(target,limits,tolerance===0?350:900,span),cost=gapCost(xs);
+   // In wide rows, spacing corrections can propagate through several
+   // adjacent families before a tighter arrangement becomes feasible.
+   const iterations=tolerance===0?350:2400;
+   const error=solve(target,limits,iterations,span),cost=gapCost(xs);
    if(error<.03&&cost<bestCost*(tolerance===0?1:.95)){best=new Map(xs);bestCost=cost;}
   }
   for(const [id,x] of best)xs.set(id,x);
