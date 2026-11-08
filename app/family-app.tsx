@@ -173,9 +173,19 @@ function DateField({kind,value,min,doubt,onChange}:{kind:'nacimiento'|'defunció
  </div>;
 }
 function RelationPicker({label,placeholder,people,candidates,selected,onChange}:{label:string;placeholder:string;people:Person[];candidates:Person[];selected:string[];onChange:(ids:string[])=>void}){
- const [query,setQuery]=useState('');const {matches,total}=useMemo(()=>searchRelatives(candidates,query,selected),[candidates,query,selected]);
+ const pageSize=8;
+ const [{query,limit},setSearch]=useState({query:'',limit:pageSize});
+ const {matches,total}=useMemo(()=>searchRelatives(candidates,query,selected,limit),[candidates,query,selected,limit]);
+ const changeQuery=(query:string)=>setSearch({query,limit:pageSize});
  return <section className="relation-search" aria-label={label}><h3>{label}</h3>{selected.length>0&&<div className="selected-relations">{selected.map(id=>{const person=people.find(p=>p.id===id);return person&&<span className="relation-chip" key={id}>{full(person)}<button type="button" aria-label={'Quitar vínculo con '+full(person)} onClick={()=>onChange(selected.filter(x=>x!==id))}><X size={12}/></button></span>;})}</div>}
- <label className="relative-search-input"><Search size={15}/><input aria-label={placeholder} type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder={placeholder+'…'} autoComplete="off"/></label>
- {query.trim().length<2?<p className="search-hint">Escribe al menos 2 caracteres para buscar.</p>:matches.length===0?<p className="search-hint" role="status">No hay coincidencias.</p>:<div className="relative-results" aria-label={'Resultados de '+label.toLowerCase()}>{matches.map(person=><button key={person.id} type="button" aria-label={'Vincular a '+full(person)} onClick={()=>{onChange([...selected,person.id]);setQuery('');}}><span className={'result-dot '+(person.gender==='Mujer'?'pink':'blue')}/><span>{full(person)}</span><Plus size={14}/></button>)}{total>matches.length&&<p className="search-hint" role="status">Mostrando {matches.length} de {total}. Escribe más para afinar la búsqueda.</p>}</div>}
+ <label className="relative-search-input"><Search size={15}/><input aria-label={placeholder} type="search" value={query} onChange={e=>changeQuery(e.target.value)} placeholder={placeholder+'…'} autoComplete="off"/></label>
+ {query.trim().length<2?<p className="search-hint">Escribe al menos 2 caracteres para buscar.</p>:matches.length===0?<p className="search-hint" role="status">No hay coincidencias.</p>:
+  <div className="relative-results" aria-label={'Resultados de '+label.toLowerCase()}>
+   {matches.map(person=><button key={person.id} type="button" aria-label={'Vincular a '+full(person)} onClick={()=>{onChange([...selected,person.id]);changeQuery('');}}><span className={'result-dot '+(person.gender==='Mujer'?'pink':'blue')}/><span>{full(person)}</span><Plus size={14}/></button>)}
+   {(total>pageSize||limit>pageSize)&&<p className="search-hint" role="status">Mostrando {matches.length} de {total}</p>}
+   {total>matches.length&&<button type="button" onClick={()=>setSearch(current=>({...current,limit:current.limit+pageSize}))}>
+    <ChevronDown size={14} aria-hidden="true"/><strong>Mostrar más resultados</strong>
+   </button>}
+  </div>}
  </section>;
 }
