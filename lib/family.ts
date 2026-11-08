@@ -7,12 +7,14 @@ export type Person = { id:string; name:string; surname:string; gender:string; bi
 export type Family = { title:string; people:Person[] };
 export function todayISO() { return new Intl.DateTimeFormat('en-CA',{timeZone:'Atlantic/Canary',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
 export const isYear=(value:string)=>/^\d{4}$/.test(value);
-export const dateStart=(value:string)=>isYear(value)?value+'-01-01':value;
+export const isMonthDay=(value:string)=>/^--\d{2}-\d{2}$/.test(value);
+export const dateStart=(value:string)=>isMonthDay(value)?'':isYear(value)?value+'-01-01':value;
 const dateEnd=(value:string)=>isYear(value)?value+'-12-31':value;
 const recordedDate=(value:string)=>isYear(value)?Number(value)>0:validDate(value);
 export function dateLabel(value:string){
  if(!value)return '¿?';
  if(isYear(value))return `??/??/${value}`;
+ if(isMonthDay(value))return `${value.slice(5)}/${value.slice(2,4)}/????`;
  const [year,month,day]=value.split('-');
  return `${day}/${month}/${year}`;
 }
@@ -44,15 +46,20 @@ export function validateFamily(input:unknown, today=todayISO()): asserts input i
     for(const k of ['name','surname','gender','birth','death','place','note'] as const) if(typeof p[k]!=='string'||p[k].length>(k==='note'?10000:200)) throw new Error('Hay un campo de persona no válido.');
     if(p.uncertain!==undefined&&(!Array.isArray(p.uncertain)||p.uncertain.some(field=>!UNCERTAIN_FIELDS.includes(field))||new Set(p.uncertain).size!==p.uncertain.length))throw new Error('Hay marcas de duda no válidas.');
     if(!['Mujer','Hombre','No binario','Otro','Sin especificar'].includes(p.gender)||typeof p.deceased!=='boolean') throw new Error('Revisa el género y el estado de la persona.');
-    if((p.birth&&(!recordedDate(p.birth)||dateStart(p.birth)>today))||(p.death&&(!recordedDate(p.death)||dateStart(p.death)>today))) throw new Error('Las fechas deben ser válidas y no pueden estar en el futuro.');
+    const birthStart=dateStart(p.birth);
+    const validBirth=isMonthDay(p.birth)?validDate('2000'+p.birth.slice(1)):recordedDate(p.birth)&&birthStart<=today;
+    if((p.birth&&!validBirth)||(p.death&&(!recordedDate(p.death)||dateStart(p.death)>today))) throw new Error('Las fechas deben ser válidas y no pueden estar en el futuro.');
     if(p.death&&!p.deceased) throw new Error('Una persona con fecha de defunción debe marcarse como fallecida.');
-    if(p.death&&p.birth&&dateEnd(p.death)<dateStart(p.birth)) throw new Error('La fecha de defunción no puede ser anterior al nacimiento.');
+    if(p.death&&birthStart&&dateEnd(p.death)<birthStart) throw new Error('La fecha de defunción no puede ser anterior al nacimiento.');
     for(const k of ['parents','partners'] as const) if(!Array.isArray(p[k])||p[k].some(v=>typeof v!=='string')||new Set(p[k]).size!==p[k].length) throw new Error('Hay relaciones duplicadas o no válidas.');
   }
   const map=new Map(f.people.map(p=>[p.id,p]));
   for(const p of f.people) {
     for(const id of [...p.parents,...p.partners]) if(id===p.id||!ids.has(id)) throw new Error('Una relación apunta a una persona no válida.');
-    for(const id of p.parents) {const a=map.get(id)!; if(a.birth&&p.birth&&dateStart(a.birth)>=dateEnd(p.birth)) throw new Error('Un progenitor debe haber nacido antes que su descendiente.');}
+    for(const id of p.parents) {
+      const parentStart=dateStart(map.get(id)!.birth);
+      if(parentStart&&dateStart(p.birth)&&parentStart>=dateEnd(p.birth)) throw new Error('Un progenitor debe haber nacido antes que su descendiente.');
+    }
     for(const id of p.partners) if(!map.get(id)!.partners.includes(p.id)) throw new Error('La relación de pareja debe ser recíproca.');
   }
   const visiting=new Set<string>(),done=new Set<string>();

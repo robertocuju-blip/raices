@@ -6,7 +6,7 @@ import {fitTreeZoom} from '../lib/tree-view';
 import {routeLanes} from '../lib/lane-routing';
 import {familyLine} from '../lib/family-line';
 import {loadFamily,saveFamily,STORAGE_KEY} from '../lib/storage';
-import {ageRange,dateLabel,dateStart,isYear,initials,isUncertain,markedValue,layout,todayISO,validateFamily,assertHierarchy,isAncestor,searchRelatives,type Family,type Person,type UncertainField,type TreeConnection} from '../lib/family';
+import {ageRange,dateLabel,dateStart,isMonthDay,isYear,initials,isUncertain,markedValue,layout,todayISO,validateFamily,assertHierarchy,isAncestor,searchRelatives,type Family,type Person,type UncertainField,type TreeConnection} from '../lib/family';
 const emptyFamily:Family={title:'Mi familia',people:[]};
 const blank=():Person=>({id:crypto.randomUUID(),name:'',surname:'',gender:'',birth:'',deceased:false,death:'',place:'',note:'',parents:[],partners:[]});
 const full=(p:Person)=>p.name.trim()||p.surname.trim()?`${markedValue(p,'name')} ${markedValue(p,'surname')}`:'Persona sin identificar';
@@ -140,8 +140,37 @@ function PersonForm({person,people,busy,error,onSave,onCancel,onShowLine}:{perso
  {error&&<p role="alert" className="form-error">{error}</p>}</div><div className="profile-form-actions"><button type="button" className="outline" disabled={busy} onClick={onCancel}>Cancelar</button><button className="primary" disabled={busy}>{busy?<><LoaderCircle size={16} className="spin"/>Guardando…</>:<><Check size={16}/>Guardar familiar</>}</button></div></form>;
 }
 function DateField({kind,value,min,doubt,onChange}:{kind:'nacimiento'|'defunción';value:string;min?:string;doubt:ReactNode;onChange:(value:string)=>void}){
- const [yearOnly,setYearOnly]=useState(isYear(value)),id=useId();
- return <div className="date-field"><div className="field"><div className="field-heading"><label htmlFor={id}>{yearOnly?'Año':'Fecha'} de {kind}</label>{doubt}</div>{yearOnly?<input id={id} type="text" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} placeholder="AAAA" value={value} onChange={e=>onChange(e.target.value.replace(/[^0-9]/g,''))}/>:<input id={id} type="date" max={todayISO()} min={min?.length===10?min:undefined} value={value} onInput={e=>onChange(e.currentTarget.value)} onChange={e=>onChange(e.target.value)}/>}</div><button type="button" className="date-mode" aria-label={yearOnly?`Introducir fecha completa de ${kind}`:`Indicar solo el año de ${kind}`} onClick={()=>{setYearOnly(!yearOnly);onChange(yearOnly?'':value.slice(0,4));}}>{yearOnly?'Fecha completa':'Solo sé el año'}</button></div>;
+ const [mode,setMode]=useState<'full'|'year'|'monthDay'>(()=>isYear(value)?'year':isMonthDay(value)?'monthDay':'full');
+ const id=useId();
+ const [month='',day='']=value.slice(2).split('-');
+ function changeMode(next:typeof mode){
+  const fullDate=mode==='full'&&value.length===10;
+  setMode(next);
+  if(next==='year')onChange(fullDate?value.slice(0,4):'');
+  else if(next==='monthDay')onChange(fullDate?'--'+value.slice(5):'');
+  else onChange('');
+ }
+ function changeMonthDay(nextMonth:string,nextDay:string){
+  onChange(nextMonth||nextDay?`--${nextMonth}-${nextDay}`:'');
+ }
+ const numberOptions=(count:number)=>Array.from({length:count},(_,i)=>{
+  const number=String(i+1).padStart(2,'0');
+  return <option key={number} value={number}>{number}</option>;
+ });
+ return <div className="date-field">
+  <div className="field">
+   <div className="field-heading"><label htmlFor={id}>{mode==='year'?'Año':'Fecha'} de {kind}</label>{doubt}</div>
+   {mode==='monthDay'?<div className="date-month-day">
+    <select id={id} aria-label={`Día de ${kind}`} value={day} onChange={e=>changeMonthDay(month,e.target.value)}><option value="">Día</option>{numberOptions(31)}</select>
+    <select aria-label={`Mes de ${kind}`} value={month} onChange={e=>changeMonthDay(e.target.value,day)}><option value="">Mes</option>{numberOptions(12)}</select>
+   </div>:mode==='year'?
+    <input id={id} type="text" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} placeholder="AAAA" value={value} onChange={e=>onChange(e.target.value.replace(/[^0-9]/g,''))}/>:
+    <input id={id} type="date" max={todayISO()} min={min?.length===10?min:undefined} value={value} onInput={e=>onChange(e.currentTarget.value)} onChange={e=>onChange(e.target.value)}/>}
+  </div>
+  {mode!=='full'&&<button type="button" className="date-mode" aria-label={`Introducir fecha completa de ${kind}`} onClick={()=>changeMode('full')}>Fecha completa</button>}
+  {mode!=='year'&&<button type="button" className="date-mode" aria-label={`Indicar solo el año de ${kind}`} onClick={()=>changeMode('year')}>Solo sé el año</button>}
+  {kind==='nacimiento'&&mode!=='monthDay'&&<button type="button" className="date-mode" onClick={()=>changeMode('monthDay')}>Solo sé el día y el mes</button>}
+ </div>;
 }
 function RelationPicker({label,placeholder,people,candidates,selected,onChange}:{label:string;placeholder:string;people:Person[];candidates:Person[];selected:string[];onChange:(ids:string[])=>void}){
  const [query,setQuery]=useState('');const {matches,total}=useMemo(()=>searchRelatives(candidates,query,selected),[candidates,query,selected]);

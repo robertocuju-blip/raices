@@ -49,14 +49,12 @@ export function compactLayout(rows: string[][], centres: Term[][], couples: Coup
   variables.coupleOverage.minimumCoupleOverage = 1;
   variables.drift.driftLimit = 1;
   variables.coupleOverage.coupleLimit = 1;
-  variables.width.widthLimit = 1;
 
   // Prefer exact centring. If the current order makes that impossible,
   // compute the smallest maximum deviation instead of guessing a tolerance.
   constraints.driftLimit = {max: 0};
   constraints.coupleLimit = {max: 0};
   let bounds = solve('minimumCoupleOverage');
-  let minimumDrift = 0;
   if (!bounds) {
     delete constraints.coupleLimit;
     bounds = solve('minimumCoupleOverage');
@@ -64,8 +62,7 @@ export function compactLayout(rows: string[][], centres: Term[][], couples: Coup
       delete constraints.driftLimit;
       const closest = solve('minimumDrift');
       if (!closest) return null;
-      minimumDrift = closest.result;
-      constraints.driftLimit = {max: minimumDrift + 1e-7};
+      constraints.driftLimit = {max: closest.result + 1e-7};
       bounds = solve('minimumCoupleOverage');
       if (!bounds) return null;
     }
@@ -77,14 +74,7 @@ export function compactLayout(rows: string[][], centres: Term[][], couples: Coup
   variables.width.cost = 1;
   variables.gap.cost = 1;
   for (const name of gapVariables) variables[name].cost = 1 / Math.max(1, gapVariables.length);
-  const centred = solve();
-  if (!centred) return null;
-  let best = centred;
-  if (Number(centred.gap ?? 0) > 4) {
-    constraints.driftLimit = {max: Math.max(minimumDrift, .5) + 1e-7};
-    constraints.widthLimit = {max: Number(centred.width ?? 0) + 1e-7};
-    const compact = solve();
-    if (compact && compact.result < centred.result - 1e-6) best = compact;
-  }
+  const best = solve();
+  if (!best) return null;
   return new Map([...position].map(([id, key]) => [id, Number(best[key] ?? 0) * step]));
 }

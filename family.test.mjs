@@ -20,6 +20,12 @@ f=copy();f.people[1].id=f.people[0].id;assert.throws(()=>validateFamily(f),/úni
 assert.equal(layout(demo.people).generations,3);
 assert.equal(dateLabel('1980'),'??/??/1980');
 assert.equal(dateLabel('1980-04-07'),'07/04/1980');
+assert.equal(dateLabel('--04-07'),'07/04/????');
+assert.equal(ageRange({birth:'--04-07',death:'',deceased:false},'2026-11-06'),null);
+assert.equal(ageRange({birth:'--04-07',death:'2020',deceased:true},'2026-11-06'),null);
+f=copy();f.people[0].birth='--02-29';validateFamily(f,'2026-11-06');
+f.people[6].birth='--12-31';validateFamily(f,'2026-11-06');
+f.people[0].birth='--04-31';assert.throws(()=>validateFamily(f),/válidas/);
 assert.equal(dateLabel(''),'¿?');
 assert.deepEqual(ageRange({birth:'1980',death:'',deceased:false},'2026-11-06'),{min:45,max:46});
 assert.deepEqual(ageRange({birth:'1980',death:'2020',deceased:true},'2026-11-06'),{min:39,max:40});

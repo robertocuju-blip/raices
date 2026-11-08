@@ -9,10 +9,11 @@ const centres = [link('left', children[0]), link('right', children.at(-1))];
 const compact = compactLayout(rows, centres, [], step);
 const distance = (positions, a, b) => positions.get(b) - positions.get(a);
 
-// The dense row forces nine pitches. Moving each sparse-row endpoint by
-// half a pitch can close its gap by one pitch, which is the feasible limit.
+// The dense row forces nine pitches. Keep the linked cards exactly aligned
+// even when a sideways shift would close the gap in the sparse row.
 assert.ok(Math.abs(distance(compact, children[0], children.at(-1)) - 9 * step) < .001);
-assert.ok(Math.abs(distance(compact, 'left', 'right') - 8 * step) < .001);
+assert.ok(Math.abs(distance(compact, 'left', children[0])) < .001);
+assert.ok(Math.abs(distance(compact, 'right', children.at(-1))) < .001);
 assert.deepEqual(compactLayout(rows, centres, [], step), compact);
 
 // Reversed parent/child order makes exact alignment impossible. Use the
